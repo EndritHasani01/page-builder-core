@@ -1,8 +1,13 @@
 import type { CSSProperties, MouseEvent } from "react";
 import { memo, useMemo } from "react";
 
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
+
 import type { Breakpoint, Document, Node, NodeId } from "@/editor-core";
 import { blockRegistry, isProbablySafeUrl } from "@/editor-core";
+
+import { containerDropId, nodeDragId, type DragPayload } from "@/dnd";
 
 import styles from "./RenderDocument.module.css";
 import { mergeCss, resolveResponsiveStyle, stylePropsToCss, themeToCssVars } from "./renderUtils";
@@ -18,6 +23,11 @@ export type RenderDocumentProps = {
   hoveredId?: NodeId | null;
   onSelect?: (nodeId: NodeId) => void;
   onHover?: (nodeId: NodeId | null) => void;
+
+  enableDnd?: boolean;
+  draggingId?: NodeId | null;
+  dropTargetId?: NodeId | null;
+  dropInvalidId?: NodeId | null;
 };
 
 export function RenderDocument(props: RenderDocumentProps) {
@@ -33,7 +43,11 @@ export function RenderDocument(props: RenderDocumentProps) {
 
   return (
     <div style={rootStyle}>
-      <NodeRenderer nodeId={props.doc.rootId} {...props} />
+      {props.mode === "editor" && props.enableDnd ? (
+        <NodeRendererWithDnd nodeId={props.doc.rootId} {...props} />
+      ) : (
+        <NodeRenderer nodeId={props.doc.rootId} {...props} />
+      )}
     </div>
   );
 }
@@ -134,6 +148,137 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
   });
 });
 
+const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendererProps) {
+  const { nodeId, ...rest } = props;
+  const node = props.doc.nodes[nodeId];
+
+  const resolvedStyle = useMemo(() => resolveResponsiveStyle(node?.style, props.breakpoint), [node?.style, props.breakpoint]);
+  const nodeStyle = useMemo(() => stylePropsToCss(resolvedStyle), [resolvedStyle]);
+
+  const canHaveChildren = node ? blockRegistry[node.type].allowedChildren.length > 0 : false;
+
+  const draggableEnabled =
+    Boolean(props.enableDnd) &&
+    Boolean(node) &&
+    nodeId !== props.doc.rootId &&
+    node.constraints?.locked !== true &&
+    node.constraints?.draggable !== false;
+
+  const droppableEnabled = Boolean(props.enableDnd) && canHaveChildren;
+
+  const draggable = useDraggable({
+    id: nodeDragId(nodeId),
+    disabled: !draggableEnabled,
+    data: { kind: "node", nodeId } satisfies DragPayload,
+  });
+
+  const droppable = useDroppable({
+    id: containerDropId(nodeId),
+    disabled: !droppableEnabled,
+    data: { kind: "container", nodeId } as const,
+  });
+
+  const {
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    setActivatorNodeRef: setDragActivatorRef,
+    setNodeRef: setDragNodeRef,
+    transform: dragTransform,
+    isDragging,
+  } = draggable;
+
+  const { setNodeRef: setDropNodeRef } = droppable;
+
+  const dndRef = (el: HTMLElement | null) => {
+    setDragNodeRef(el);
+    setDropNodeRef(el);
+  };
+
+  const transform = dragTransform ? CSS.Translate.toString(dragTransform) : undefined;
+  const wrapperStyle = mergeCss(
+    transform ? ({ transform } satisfies CSSProperties) : undefined,
+    isDragging ? ({ opacity: 0.35 } satisfies CSSProperties) : undefined,
+  );
+
+  if (!node) {
+    return <div className={styles.missingNode}>Missing node: {nodeId}</div>;
+  }
+
+  const hidden = Boolean(node.constraints?.hidden);
+  const selected = props.selectedId === node.id;
+  const hovered = props.hoveredId === node.id;
+
+  const isDropTarget = props.dropTargetId === node.id;
+  const isDropInvalid = props.dropInvalidId === node.id;
+
+  const dataAttrs: Record<string, string> = {
+    "data-node-id": node.id,
+    "data-node-type": node.type,
+  };
+  if (canHaveChildren) dataAttrs["data-dnd-container"] = "true";
+  if (draggableEnabled) dataAttrs["data-dnd-draggable"] = "true";
+
+  const chromeClassName =
+    [
+      styles.node,
+      selected ? styles.nodeSelected : null,
+      hovered ? styles.nodeHovered : null,
+      hidden ? styles.nodeHidden : null,
+      isDragging ? styles.nodeDragging : null,
+      isDropTarget ? styles.nodeDropTarget : null,
+      isDropInvalid ? styles.nodeDropInvalid : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || undefined;
+
+  const onSelectNode = props.onSelect ? (e: MouseEvent) => {
+    e.stopPropagation();
+    props.onSelect?.(node.id);
+  } : undefined;
+
+  const onMouseEnter = props.onHover ? () => props.onHover?.(node.id) : undefined;
+  const onMouseLeave = props.onHover ? () => props.onHover?.(node.parentId) : undefined;
+
+  const chrome = (
+    <>
+      <button
+        type="button"
+        ref={setDragActivatorRef}
+        className={styles.dragHandle}
+        data-dnd-handle="true"
+        aria-label={`Drag ${blockRegistry[node.type].label}`}
+        onClick={onSelectNode}
+        {...dragAttributes}
+        {...dragListeners}
+      >
+        Drag
+      </button>
+      {hidden ? <span className={styles.hiddenBadge}>Hidden</span> : null}
+    </>
+  );
+
+  const children = node.children.map((childId) => (
+    <NodeRendererWithDnd key={childId} nodeId={childId} {...rest} />
+  ));
+
+  return renderNode({
+    node,
+    mode: props.mode,
+    breakpoint: props.breakpoint,
+    disableNavigation: props.disableNavigation,
+    chrome,
+    chromeClassName,
+    dataAttrs,
+    nodeStyle,
+    wrapperStyle,
+    onSelectNode,
+    onMouseEnter,
+    onMouseLeave,
+    children,
+    dndRef,
+  });
+});
+
 function renderNode(args: {
   node: Node;
   mode: RenderMode;
@@ -143,23 +288,26 @@ function renderNode(args: {
   chromeClassName?: string;
   dataAttrs: Record<string, string> | Record<string, never>;
   nodeStyle: CSSProperties;
+  wrapperStyle?: CSSProperties;
   onSelectNode?: (e: MouseEvent) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   children: React.ReactNode;
+  dndRef?: (el: HTMLElement | null) => void;
 }) {
   const { node, mode, breakpoint } = args;
 
   switch (node.type) {
     case "page": {
       const intrinsic: CSSProperties = { minHeight: "100%" };
-      const style = mergeCss(intrinsic, args.nodeStyle);
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <div
           lang={node.props.lang}
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -173,12 +321,13 @@ function renderNode(args: {
     case "section": {
       const padding = node.props.variant === "hero" ? "64px 16px" : "24px 16px";
       const intrinsic: CSSProperties = { padding };
-      const style = mergeCss(intrinsic, args.nodeStyle);
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <section
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -200,13 +349,15 @@ function renderNode(args: {
         flexDirection: isSmall ? "column" : "row",
         gap: node.props.gap,
         alignItems: "stretch",
+        minHeight: mode === "editor" ? "44px" : undefined,
       };
-      const style = mergeCss(intrinsic, args.nodeStyle);
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <div
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -225,13 +376,15 @@ function renderNode(args: {
         display: "flex",
         flexDirection: "column",
         gap: "12px",
+        minHeight: mode === "editor" ? "44px" : undefined,
       };
-      const style = mergeCss(intrinsic, args.nodeStyle);
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <div
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -244,12 +397,14 @@ function renderNode(args: {
 
     case "container": {
       const Tag = node.props.as;
-      const style = mergeCss(undefined, args.nodeStyle);
+      const intrinsic = mode === "editor" ? ({ minHeight: "32px" } satisfies CSSProperties) : undefined;
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <Tag
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -275,6 +430,8 @@ function renderNode(args: {
         <div
           {...args.dataAttrs}
           className={wrapperClassName}
+          style={args.wrapperStyle}
+          ref={args.dndRef as never}
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
@@ -297,6 +454,8 @@ function renderNode(args: {
           <div
             {...args.dataAttrs}
             className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
             onClick={args.onSelectNode}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
@@ -352,6 +511,8 @@ function renderNode(args: {
           <span
             {...args.dataAttrs}
             className={[styles.wrapped, styles.wrappedInline].join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
             onClick={args.onSelectNode}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
@@ -415,12 +576,13 @@ function renderNode(args: {
 
     case "spacer": {
       const intrinsic: CSSProperties = { height: node.props.height, width: "100%" };
-      const style = mergeCss(intrinsic, args.nodeStyle);
+      const style = mergeCss(intrinsic, args.nodeStyle, args.wrapperStyle);
       return (
         <div
           {...args.dataAttrs}
           className={args.chromeClassName}
           style={style}
+          ref={args.dndRef as never}
           aria-hidden="true"
           onClick={args.onSelectNode}
           onMouseEnter={args.onMouseEnter}
@@ -446,7 +608,15 @@ function renderNode(args: {
       }
 
       return (
-        <div {...args.dataAttrs} className={styles.wrapped} onClick={args.onSelectNode} onMouseEnter={args.onMouseEnter} onMouseLeave={args.onMouseLeave}>
+        <div
+          {...args.dataAttrs}
+          className={styles.wrapped}
+          style={args.wrapperStyle}
+          ref={args.dndRef as never}
+          onClick={args.onSelectNode}
+          onMouseEnter={args.onMouseEnter}
+          onMouseLeave={args.onMouseLeave}
+        >
           {args.chrome}
           <hr className={args.chromeClassName} style={hrStyle} />
         </div>

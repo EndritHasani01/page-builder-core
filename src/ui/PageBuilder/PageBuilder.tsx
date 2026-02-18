@@ -1,6 +1,22 @@
 import type { CSSProperties, ChangeEvent, KeyboardEvent, MouseEvent } from "react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  pointerWithin,
+  useDraggable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+
 import type { Breakpoint, Document, IdFactory, NodeId, NodeType, StyleProps, Subtree, ValidationIssue } from "@/editor-core";
 import {
   COLOR_TOKENS,
@@ -18,6 +34,8 @@ import {
   remapIds,
   validateDocument,
 } from "@/editor-core";
+import type { DragPayload, DropIntent } from "@/dnd";
+import { computeDropIntent, paletteDragId, parseContainerDropId, parseNodeDragId, parsePaletteDragId } from "@/dnd";
 import { RenderDocument, themeToCssVars } from "@/renderer";
 import type { DispatchOptions, EditorAction, Mode } from "@/store";
 import { editorStore, useEditorStore } from "@/store";
@@ -50,6 +68,14 @@ export function PageBuilder() {
   const [mobilePanel, setMobilePanel] = useState<null | "palette" | "inspector">(null);
   const [persistence, setPersistence] = useState<PersistenceStatus>({ state: "idle" });
 
+  const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
+  const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
+  const [dropInvalid, setDropInvalid] = useState<null | { overId: NodeId; reason: string }>(null);
+  const [dropIndicator, setDropIndicator] = useState<null | DropIndicatorGeometry>(null);
+  const dragStartPoint = useRef<{ x: number; y: number } | null>(null);
+  const lastIntentKey = useRef<string | null>(null);
+  const canvasBodyRef = useRef<HTMLDivElement | null>(null);
+
   const [toasts, setToasts] = useState<Array<{ id: string; kind: "info" | "error"; message: string }>>([]);
   const toastTimers = useRef(new Map<string, number>());
 
@@ -74,6 +100,16 @@ export function PageBuilder() {
 
   const docId = "default";
   const isNarrow = useMediaQuery("(max-width: 1024px)");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const collisionDetection = useCallback<typeof pointerWithin>((args) => {
+    const pointerHits = pointerWithin(args);
+    return pointerHits.length > 0 ? pointerHits : closestCenter(args);
+  }, []);
 
   useEffect(() => {
     const loaded = loadFromLocalStorage(docId);
@@ -173,8 +209,186 @@ export function PageBuilder() {
     [insertFromPalette, isNarrow],
   );
 
+  const dndEnabled = !isPreview && !activeTxn;
+
+  const clearDndState = useCallback(() => {
+    setActiveDrag(null);
+    setDropIntent(null);
+    setDropInvalid(null);
+    setDropIndicator(null);
+    dragStartPoint.current = null;
+    lastIntentKey.current = null;
+  }, []);
+
+  const computeDropFromEvent = useCallback(
+    (payload: DragPayload, event: DragMoveEvent | DragEndEvent): { intent: DropIntent | null; invalid: typeof dropInvalid } => {
+      const start = dragStartPoint.current;
+      const pointer = start
+        ? { x: start.x + event.delta.x, y: start.y + event.delta.y }
+        : pointerFromTranslatedRect(event.active.rect.current.translated);
+
+      if (!pointer) return { intent: null, invalid: null };
+
+      const overContainerId = parseContainerDropId(event.over?.id);
+      const res = computeDropIntent({ doc, breakpoint, source: payload, overContainerId, pointer });
+      if (res.ok) return { intent: res.intent, invalid: null };
+      if (res.overId) return { intent: null, invalid: { overId: res.overId, reason: res.reason } };
+      return { intent: null, invalid: null };
+    },
+    [breakpoint, doc],
+  );
+
+  const updateDropFromEvent = useCallback(
+    (payload: DragPayload, event: DragMoveEvent | DragEndEvent) => {
+      const next = computeDropFromEvent(payload, event);
+      if (next.intent) {
+        const key = `${next.intent.parentId}|${next.intent.index}`;
+        if (key !== lastIntentKey.current) {
+          lastIntentKey.current = key;
+          setDropIntent(next.intent);
+        }
+        if (dropInvalid !== null) setDropInvalid(null);
+        const canvasEl = canvasBodyRef.current;
+        const geom = canvasEl ? computeDropIndicatorGeometry(doc, next.intent, canvasEl) : null;
+        setDropIndicator((prev) => (isSameDropIndicator(prev, geom) ? prev : geom));
+        return;
+      }
+
+      lastIntentKey.current = null;
+      if (dropIntent !== null) setDropIntent(null);
+      if (next.invalid) {
+        setDropInvalid((prev) => {
+          if (prev && prev.overId === next.invalid!.overId && prev.reason === next.invalid!.reason) return prev;
+          return next.invalid;
+        });
+      } else if (dropInvalid !== null) {
+        setDropInvalid(null);
+      }
+      setDropIndicator(null);
+    },
+    [computeDropFromEvent, doc, dropIntent, dropInvalid],
+  );
+
+  const onDragStart = useCallback(
+    (event: DragStartEvent) => {
+      if (!dndEnabled) return;
+      const nodeId = parseNodeDragId(event.active.id);
+      const paletteType = parsePaletteDragId(event.active.id);
+      const payload: DragPayload | null = nodeId
+        ? { kind: "node", nodeId }
+        : paletteType
+          ? { kind: "palette", nodeType: paletteType }
+          : null;
+      if (!payload) return;
+
+      dragStartPoint.current = pointerFromActivatorEvent(event.activatorEvent);
+      lastIntentKey.current = null;
+      setActiveDrag(payload);
+      setDropIntent(null);
+      setDropInvalid(null);
+      setDropIndicator(null);
+
+      if (payload.kind === "node") {
+        dispatch({ type: "SET_SELECTED", nodeId: payload.nodeId });
+      }
+    },
+    [dispatch, dndEnabled],
+  );
+
+  const onDragMove = useCallback(
+    (event: DragMoveEvent) => {
+      if (!dndEnabled) return;
+      if (!activeDrag) return;
+      updateDropFromEvent(activeDrag, event);
+    },
+    [activeDrag, dndEnabled, updateDropFromEvent],
+  );
+
+  const onDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const payload = activeDrag;
+      if (!payload) return;
+
+      const computed = dndEnabled ? computeDropFromEvent(payload, event) : { intent: null, invalid: null };
+
+      if (!dndEnabled) {
+        clearDndState();
+        return;
+      }
+
+      if (!computed.intent) {
+        if (computed.invalid) pushToast("error", computed.invalid.reason);
+        clearDndState();
+        return;
+      }
+
+      const intent = computed.intent;
+
+      if (payload.kind === "palette") {
+        const subtree = buildPaletteSubtree(payload.nodeType, idFactory);
+        beginTransaction(`DnD add ${blockRegistry[payload.nodeType].label}`);
+        dispatch({ type: "INSERT_SUBTREE", parentId: intent.parentId, index: intent.index, subtree });
+        commitTransaction();
+      } else {
+        const moving = doc.nodes[payload.nodeId];
+        const fromParentId = moving?.parentId ?? null;
+        if (!moving || !fromParentId) {
+          pushToast("error", "Dragged node no longer exists.");
+          clearDndState();
+          return;
+        }
+
+        const fromParent = doc.nodes[fromParentId];
+        const fromIndex = fromParent ? fromParent.children.indexOf(moving.id) : -1;
+        const isSameParent = fromParentId === intent.parentId;
+        const isNoOp = isSameParent && fromIndex === intent.index;
+
+        if (!isNoOp) {
+          beginTransaction(`DnD move ${blockRegistry[moving.type].label}`);
+          dispatch({ type: "MOVE_NODE", nodeId: moving.id, parentId: intent.parentId, index: intent.index });
+          commitTransaction();
+        }
+      }
+
+      dispatch({ type: "SET_HOVERED", nodeId: null });
+      clearDndState();
+    },
+    [
+      activeDrag,
+      beginTransaction,
+      clearDndState,
+      commitTransaction,
+      computeDropFromEvent,
+      dispatch,
+      dndEnabled,
+      doc.nodes,
+      idFactory,
+      pushToast,
+    ],
+  );
+
+  const onDragCancel = useCallback(() => {
+    clearDndState();
+  }, [clearDndState]);
+
+  const dragOverlayLabel = useMemo(() => {
+    if (!activeDrag) return null;
+    if (activeDrag.kind === "palette") return `Add ${blockRegistry[activeDrag.nodeType].label}`;
+    const node = doc.nodes[activeDrag.nodeId];
+    return node ? `Move ${blockRegistry[node.type].label}` : "Move";
+  }, [activeDrag, doc.nodes]);
+
   return (
     <div className={styles.themeRoot} style={themeStyle}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collisionDetection}
+        onDragStart={onDragStart}
+        onDragMove={onDragMove}
+        onDragEnd={onDragEnd}
+        onDragCancel={onDragCancel}
+        autoScroll
+      >
       <header className={styles.toolbar}>
         <h1 className={styles.brand}>Page Builder</h1>
 
@@ -298,7 +512,7 @@ export function PageBuilder() {
           <aside className={styles.panel} aria-label="Palette">
             <div className={styles.panelTitle}>Palette</div>
             <div className={styles.panelBody}>
-              <PaletteList disabled={isPreview} onInsert={insertFromPaletteAndMaybeClose} />
+              <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
             </div>
           </aside>
         ) : null}
@@ -313,7 +527,7 @@ export function PageBuilder() {
             onMouseLeave={() => dispatch({ type: "SET_HOVERED", nodeId: null })}
           >
             <div className={styles.canvasTitle}>Canvas ({mode})</div>
-            <div className={styles.canvasBody} onClick={onCanvasClick}>
+            <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
               <RenderDocument
                 doc={doc}
                 mode={renderMode}
@@ -321,9 +535,28 @@ export function PageBuilder() {
                 disableNavigation={isPreview}
                 selectedId={renderMode === "editor" ? selectedId : null}
                 hoveredId={renderMode === "editor" ? hoveredId : null}
+                enableDnd={renderMode === "editor" ? dndEnabled : false}
+                draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
+                dropTargetId={dropIntent?.parentId ?? null}
+                dropInvalidId={dropInvalid?.overId ?? null}
                 onSelect={renderMode === "editor" ? onSelect : undefined}
                 onHover={renderMode === "editor" ? onHover : undefined}
               />
+              {dropIndicator ? (
+                <div
+                  className={dropIndicator.kind === "placeholder" ? styles.dropPlaceholder : styles.dropLine}
+                  style={{
+                    left: dropIndicator.left,
+                    top: dropIndicator.top,
+                    width: dropIndicator.width,
+                    height: dropIndicator.height,
+                  }}
+                  data-drop-indicator="true"
+                  data-drop-parent={dropIndicator.parentId}
+                  data-drop-index={String(dropIndicator.index)}
+                  data-drop-axis={dropIndicator.axis}
+                />
+              ) : null}
             </div>
           </div>
         </section>
@@ -349,7 +582,7 @@ export function PageBuilder() {
 
       {isNarrow && mobilePanel === "palette" ? (
         <Drawer title="Palette" side="left" onClose={() => setMobilePanel(null)}>
-          <PaletteList disabled={isPreview} onInsert={insertFromPaletteAndMaybeClose} />
+          <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
         </Drawer>
       ) : null}
 
@@ -402,6 +635,11 @@ export function PageBuilder() {
           onToast={pushToast}
         />
       ) : null}
+
+      <DragOverlay>
+        {activeDrag ? <div className={styles.dragOverlay}>{dragOverlayLabel}</div> : null}
+      </DragOverlay>
+      </DndContext>
     </div>
   );
 }
@@ -412,19 +650,53 @@ function PaletteList(props: { disabled: boolean; onInsert: (nodeType: NodeType) 
       {Object.values(blockRegistry)
         .filter((b) => b.type !== "page" && b.type !== "column")
         .map((b) => (
-          <li key={b.type} className={styles.paletteItem}>
-            <button
-              type="button"
-              className={styles.paletteButton}
-              disabled={props.disabled}
-              data-palette-block-type={b.type}
-              onClick={() => props.onInsert(b.type)}
-            >
-              {b.label}
-            </button>
-          </li>
+          <PaletteListItem key={b.type} block={b} disabled={props.disabled} onInsert={props.onInsert} />
         ))}
     </ul>
+  );
+}
+
+function PaletteListItem(props: {
+  block: (typeof blockRegistry)[NodeType];
+  disabled: boolean;
+  onInsert: (nodeType: NodeType) => void;
+}) {
+  const draggable = useDraggable({
+    id: paletteDragId(props.block.type),
+    disabled: props.disabled,
+    data: { kind: "palette", nodeType: props.block.type } satisfies DragPayload,
+  });
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef } = draggable;
+
+  return (
+    <li
+      ref={setNodeRef}
+      className={styles.paletteItem}
+      data-palette-block-type={props.block.type}
+      data-dnd-palette-item="true"
+    >
+      <button
+        type="button"
+        className={styles.paletteButton}
+        disabled={props.disabled}
+        onClick={() => props.onInsert(props.block.type)}
+      >
+        {props.block.label}
+      </button>
+
+      <button
+        type="button"
+        ref={setActivatorNodeRef}
+        className={styles.paletteDragHandle}
+        disabled={props.disabled}
+        aria-label={`Drag ${props.block.label}`}
+        data-dnd-handle="true"
+        {...attributes}
+        {...listeners}
+      >
+        Drag
+      </button>
+    </li>
   );
 }
 
@@ -1537,4 +1809,113 @@ function escapeAttr(input: string): string {
 
 function isProbablyValidLang(input: string): boolean {
   return /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(input.trim());
+}
+
+type DropIndicatorGeometry = {
+  kind: "line" | "placeholder";
+  axis: "x" | "y";
+  parentId: NodeId;
+  index: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+function isSameDropIndicator(a: DropIndicatorGeometry | null, b: DropIndicatorGeometry | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.kind === b.kind &&
+    a.axis === b.axis &&
+    a.parentId === b.parentId &&
+    a.index === b.index &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
+
+function computeDropIndicatorGeometry(doc: Document, intent: DropIntent, canvasBodyEl: HTMLElement): DropIndicatorGeometry | null {
+  if (typeof document === "undefined") return null;
+
+  const canvasRect = canvasBodyEl.getBoundingClientRect();
+  const containerEl = canvasBodyEl.querySelector(`[data-node-id="${intent.parentId}"]`);
+  if (!(containerEl instanceof HTMLElement)) return null;
+
+  const containerRect = containerEl.getBoundingClientRect();
+  const children = doc.nodes[intent.parentId]?.children ?? [];
+
+  const inset = 8;
+  if (children.length === 0) {
+    return {
+      kind: "placeholder",
+      axis: intent.axis,
+      parentId: intent.parentId,
+      index: intent.index,
+      left: Math.round(containerRect.left - canvasRect.left + inset),
+      top: Math.round(containerRect.top - canvasRect.top + inset),
+      width: Math.round(Math.max(0, containerRect.width - inset * 2)),
+      height: Math.round(Math.max(32, containerRect.height - inset * 2)),
+    };
+  }
+
+  if (intent.axis === "x") {
+    const beforeId = intent.index < children.length ? children[intent.index] : null;
+    const refId = beforeId ?? children[children.length - 1];
+    const refEl = canvasBodyEl.querySelector(`[data-node-id="${refId}"]`);
+
+    let x = containerRect.left;
+    if (refEl instanceof HTMLElement) {
+      const r = refEl.getBoundingClientRect();
+      x = beforeId ? r.left : r.right;
+    }
+
+    return {
+      kind: "line",
+      axis: "x",
+      parentId: intent.parentId,
+      index: intent.index,
+      left: Math.round(x - canvasRect.left),
+      top: Math.round(containerRect.top - canvasRect.top + inset),
+      width: 2,
+      height: Math.round(Math.max(0, containerRect.height - inset * 2)),
+    };
+  }
+
+  const beforeId = intent.index < children.length ? children[intent.index] : null;
+  const refId = beforeId ?? children[children.length - 1];
+  const refEl = canvasBodyEl.querySelector(`[data-node-id="${refId}"]`);
+
+  let y = containerRect.top;
+  if (refEl instanceof HTMLElement) {
+    const r = refEl.getBoundingClientRect();
+    y = beforeId ? r.top : r.bottom;
+  }
+
+  return {
+    kind: "line",
+    axis: "y",
+    parentId: intent.parentId,
+    index: intent.index,
+    left: Math.round(containerRect.left - canvasRect.left + inset),
+    top: Math.round(y - canvasRect.top),
+    width: Math.round(Math.max(0, containerRect.width - inset * 2)),
+    height: 2,
+  };
+}
+
+function pointerFromActivatorEvent(ev: unknown): { x: number; y: number } | null {
+  if (!ev || typeof ev !== "object") return null;
+  const anyEv = ev as { clientX?: unknown; clientY?: unknown };
+  if (typeof anyEv.clientX !== "number" || typeof anyEv.clientY !== "number") return null;
+  return { x: anyEv.clientX, y: anyEv.clientY };
+}
+
+function pointerFromTranslatedRect(
+  rect: { left: number; top: number; width: number; height: number } | null | undefined,
+): { x: number; y: number } | null {
+  if (!rect) return null;
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }

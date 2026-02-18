@@ -12,8 +12,22 @@
   outline-offset: 2px;
 }
 
+.nodeDropTarget {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 72%, #22c55e);
+  outline-offset: 2px;
+}
+
+.nodeDropInvalid {
+  outline: 2px solid #b91c1c;
+  outline-offset: 2px;
+}
+
 .nodeHidden {
   opacity: 0.55;
+}
+
+.nodeDragging {
+  opacity: 0.35;
 }
 
 .hiddenBadge {
@@ -40,6 +54,7 @@
   background: #ffffff;
   font-size: 11px;
   cursor: grab;
+  touch-action: none;
 }
 
 .dragHandle:active {

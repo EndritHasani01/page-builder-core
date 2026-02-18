@@ -649,6 +649,10 @@
 
 .paletteItem {
   min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr 64px;
+  gap: 8px;
+  align-items: center;
 }
 
 .paletteButton {
@@ -663,6 +667,29 @@
 
 .paletteButton:disabled {
   opacity: 0.55;
+}
+
+.paletteDragHandle {
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, #ffffff 92%, #f3f4f6);
+  cursor: grab;
+  touch-action: none;
+}
+
+.paletteDragHandle:active {
+  cursor: grabbing;
+}
+
+.dragOverlay {
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  background: #111827;
+  color: #ffffff;
+  font-size: 13px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
 }
 
 .canvas {
@@ -708,6 +735,7 @@
 
 .canvasBody {
   min-height: 120px;
+  position: relative;
 }
 
 .muted {
@@ -715,6 +743,24 @@
   font-size: 13px;
   line-height: 1.45;
   color: #6b7280;
+}
+
+.dropLine {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--color-primary) 65%, #22c55e);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+.dropPlaceholder {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  border-radius: 14px;
+  border: 2px dashed color-mix(in srgb, var(--color-primary) 70%, #22c55e);
+  background: color-mix(in srgb, #ffffff 88%, var(--color-primary));
 }
 
 @media (max-width: 1024px) {
