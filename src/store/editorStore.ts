@@ -1,5 +1,5 @@
 import { applyPatches, enablePatches, type Patch, produceWithPatches } from "immer";
-import { createStore, type StoreApi } from "zustand/vanilla";
+import { createStore } from "zustand/vanilla";
 import { subscribeWithSelector } from "zustand/middleware";
 import { useStore } from "zustand";
 
@@ -77,6 +77,8 @@ export type EditorState = {
   undo: () => void;
   redo: () => void;
 
+  replaceDocument: (doc: Document) => void;
+
   beginTransaction: (label: string) => void;
   commitTransaction: () => void;
   cancelTransaction: () => void;
@@ -93,8 +95,6 @@ export type CreateEditorStoreOptions = {
   selectedId?: NodeId | null;
   idFactory?: IdFactory;
 };
-
-export type EditorStore = StoreApi<EditorState>;
 
 type ApplyCtxLike = {
   idFactory: IdFactory;
@@ -162,7 +162,7 @@ function isCoalesceCompatible(prev: HistoryEntry | undefined, key: string, now: 
   return now - prev.at <= windowMs;
 }
 
-export function createEditorStore(opts: CreateEditorStoreOptions = {}): EditorStore {
+export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
   const initialDoc = opts.doc ?? createDefaultDocument();
   const initialIssues = validateDocument(initialDoc);
 
@@ -320,6 +320,20 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}): EditorSt
         });
       },
 
+      replaceDocument: (nextDoc) => {
+        const nextIssues = validateDocument(nextDoc);
+        set({
+          doc: nextDoc,
+          issues: nextIssues,
+          selectedId: nextDoc.rootId,
+          hoveredId: null,
+          undoStack: [],
+          redoStack: [],
+          activeTxn: null,
+          clipboard: null,
+        });
+      },
+
       beginTransaction: (label) => {
         const state = get();
         if (state.activeTxn) return;
@@ -412,6 +426,8 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}): EditorSt
     })),
   );
 }
+
+export type EditorStore = ReturnType<typeof createEditorStore>;
 
 function dedupeIssues(issues: ValidationIssue[]): ValidationIssue[] {
   const seen = new Set<string>();
