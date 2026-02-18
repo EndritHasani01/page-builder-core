@@ -1,0 +1,65 @@
+.node {
+  position: relative;
+}
+
+.nodeSelected {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.nodeHovered {
+  outline: 1px dashed color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+  outline-offset: 2px;
+}
+
+.nodeHidden {
+  opacity: 0.55;
+}
+
+.hiddenBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 92%, #f3f4f6);
+}
+
+.dragHandle {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: #ffffff;
+  font-size: 11px;
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.wrapped {
+  position: relative;
+  display: block;
+  max-width: 100%;
+}
+
+.wrappedInline {
+  display: inline-block;
+}
+
+.missingNode {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  color: #6b7280;
+  background: #ffffff;
+}
