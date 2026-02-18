@@ -24,13 +24,13 @@ import {
   FONT_SIZE_TOKENS,
   blockRegistry,
   cloneSubtree,
+  createDefaultDocument,
   createNode,
   getEffectiveStyleValue,
   getInheritedStyleValue,
   getSpacingTokens,
   isStyleKeyOverridden,
   isProbablySafeUrl,
-  migrateToLatest,
   remapIds,
   validateDocument,
 } from "@/editor-core";
@@ -39,10 +39,24 @@ import { computeDropIntent, paletteDragId, parseContainerDropId, parseNodeDragId
 import { RenderDocument, themeToCssVars } from "@/renderer";
 import type { DispatchOptions, EditorAction, Mode } from "@/store";
 import { editorStore, useEditorStore } from "@/store";
-import type { PersistenceStatus } from "@/persistence";
-import { loadFromLocalStorage, startAutosave } from "@/persistence";
+import type { AutosaveController, ParseDocumentErrorCode, PersistenceStatus } from "@/persistence";
+import {
+  clearLocalStorage,
+  loadBackupFromLocalStorage,
+  loadFromLocalStorage,
+  parseDocumentJsonText,
+  saveToLocalStorage,
+  startAutosave,
+} from "@/persistence";
 
 import styles from "./PageBuilder.module.css";
+
+type RecoveryInfo = {
+  code: ParseDocumentErrorCode;
+  error: string;
+  rawPrimary?: string;
+  rawBackup?: string;
+};
 
 export function PageBuilder() {
   const doc = useEditorStore((s) => s.doc);
@@ -67,6 +81,12 @@ export function PageBuilder() {
   const [dialog, setDialog] = useState<null | "import" | "export">(null);
   const [mobilePanel, setMobilePanel] = useState<null | "palette" | "inspector">(null);
   const [persistence, setPersistence] = useState<PersistenceStatus>({ state: "idle" });
+  const [autosaveEnabled, setAutosaveEnabled] = useState(false);
+  const autosaveRef = useRef<AutosaveController | null>(null);
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const [recovery, setRecovery] = useState<RecoveryInfo | null>(null);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   const [activeDrag, setActiveDrag] = useState<DragPayload | null>(null);
   const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
@@ -114,27 +134,65 @@ export function PageBuilder() {
   useEffect(() => {
     const loaded = loadFromLocalStorage(docId);
     if (!loaded.ok) {
-      if (loaded.error !== "Not found.") {
-        window.setTimeout(() => pushToast("error", `Failed to load saved document. ${loaded.error}`), 0);
+      if (loaded.code === "NOT_FOUND") {
+        window.setTimeout(() => setAutosaveEnabled(true), 0);
+        return;
       }
+
+      const info: RecoveryInfo = {
+        code: loaded.code,
+        error: loaded.error,
+        rawPrimary: loaded.rawPrimary,
+        rawBackup: loaded.rawBackup,
+      };
+
+      window.setTimeout(() => {
+        setAutosaveEnabled(false);
+        setRecovery(info);
+        setRecoveryOpen(true);
+      }, 0);
+      window.setTimeout(() => pushToast("error", `Failed to load saved document. ${loaded.error}`), 0);
       return;
     }
 
     replaceDocument(loaded.doc);
-    window.setTimeout(() => setPersistence({ state: "saved", at: Date.now() }), 0);
+    window.setTimeout(() => {
+      setRecovery(null);
+      setRecoveryOpen(false);
+      setAutosaveEnabled(true);
+      setPersistence({ state: "saved", at: Date.now() });
+    }, 0);
 
     if (loaded.recoveredFromBackup) {
+      void window.setTimeout(() => {
+        const res = saveToLocalStorage(docId, loaded.doc, { rotateBackup: false });
+        if (!res.ok) {
+          setPersistence({ state: "error", error: res.error, quota: res.quota });
+          pushToast("error", res.error);
+        }
+      }, 0);
       window.setTimeout(() => pushToast("info", "Recovered document from LocalStorage backup."), 0);
     }
     if (loaded.migratedFrom) {
+      void window.setTimeout(() => {
+        const res = saveToLocalStorage(docId, loaded.doc);
+        if (!res.ok) {
+          setPersistence({ state: "error", error: res.error, quota: res.quota });
+          pushToast("error", res.error);
+        }
+      }, 0);
       window.setTimeout(() => pushToast("info", `Migrated document from schema ${loaded.migratedFrom}.`), 0);
     }
-  }, [pushToast, replaceDocument]);
+  }, [docId, pushToast, replaceDocument]);
 
   useEffect(() => {
-    const stop = startAutosave(editorStore, docId, { onStatus: setPersistence });
-    return stop;
-  }, [docId]);
+    const ctrl = startAutosave(editorStore, docId, { onStatus: setPersistence, shouldSave: () => autosaveEnabled });
+    autosaveRef.current = ctrl;
+    return () => {
+      autosaveRef.current = null;
+      ctrl.stop();
+    };
+  }, [autosaveEnabled, docId]);
 
   const lastPersistenceError = useRef<string | null>(null);
   useEffect(() => {
@@ -143,6 +201,103 @@ export function PageBuilder() {
     lastPersistenceError.current = persistence.error;
     window.setTimeout(() => pushToast("error", persistence.error), 0);
   }, [persistence, pushToast]);
+
+  const onClearSavedAfterQuota = useCallback(
+    async (targetDocId: string) => {
+      const ok = window.confirm(
+        "This will clear the saved snapshot and backup from LocalStorage. Your current document will remain open and will be saved again. Continue?",
+      );
+      if (!ok) return;
+
+      const cleared = clearLocalStorage(targetDocId);
+      if (!cleared.ok) {
+        pushToast("error", cleared.error);
+        return;
+      }
+
+      autosaveRef.current?.resetQuotaBlock();
+      setAutosaveEnabled(true);
+
+      setPersistence({ state: "saving" });
+      const res = saveToLocalStorage(targetDocId, doc, { rotateBackup: false });
+      if (!res.ok) {
+        setPersistence({ state: "error", error: res.error, quota: res.quota });
+        pushToast("error", res.error);
+        return;
+      }
+
+      setPersistence({ state: "saved", at: Date.now() });
+      pushToast("info", "Cleared saved snapshots and resumed saving.");
+    },
+    [doc, pushToast],
+  );
+
+  const onConfirmReset = useCallback(() => {
+    const cleared = clearLocalStorage(docId);
+    if (!cleared.ok) {
+      pushToast("error", cleared.error);
+      return;
+    }
+
+    const next = createDefaultDocument();
+    replaceDocument(next);
+    setResetOpen(false);
+    setRecovery(null);
+    setRecoveryOpen(false);
+    setAutosaveEnabled(true);
+    autosaveRef.current?.resetQuotaBlock();
+
+    setPersistence({ state: "saving" });
+    const res = saveToLocalStorage(docId, next, { rotateBackup: false });
+    if (!res.ok) {
+      setPersistence({ state: "error", error: res.error, quota: res.quota });
+      pushToast("error", res.error);
+      return;
+    }
+
+    setPersistence({ state: "saved", at: Date.now() });
+    pushToast("info", "Reset document.");
+  }, [docId, pushToast, replaceDocument]);
+
+  const onOverwriteSavedAndEnableAutosave = useCallback(() => {
+    const ok = window.confirm(
+      "This will permanently delete the saved snapshot and backup from LocalStorage. Export any recovery JSON first. Continue?",
+    );
+    if (!ok) return;
+
+    const cleared = clearLocalStorage(docId);
+    if (!cleared.ok) {
+      pushToast("error", cleared.error);
+      return;
+    }
+
+    setRecovery(null);
+    setRecoveryOpen(false);
+    setAutosaveEnabled(true);
+    autosaveRef.current?.resetQuotaBlock();
+
+    setPersistence({ state: "saving" });
+    const res = saveToLocalStorage(docId, doc, { rotateBackup: false });
+    if (!res.ok) {
+      setPersistence({ state: "error", error: res.error, quota: res.quota });
+      pushToast("error", res.error);
+      return;
+    }
+
+    setPersistence({ state: "saved", at: Date.now() });
+    pushToast("info", "Saving re-enabled.");
+  }, [doc, docId, pushToast]);
+
+  const onLoadBackupForRecovery = useCallback(() => {
+    const loaded = loadBackupFromLocalStorage(docId);
+    if (!loaded.ok) {
+      pushToast("error", `Failed to load backup snapshot. ${loaded.error}`);
+      return;
+    }
+
+    replaceDocument(loaded.doc);
+    pushToast("info", "Loaded backup snapshot. Saving remains disabled until you clear the newer saved document.");
+  }, [docId, pushToast, replaceDocument]);
 
   const themeStyle = useMemo(() => themeToCssVars(doc.theme) as CSSProperties, [doc.theme]);
 
@@ -390,9 +545,10 @@ export function PageBuilder() {
         autoScroll
       >
       <header className={styles.toolbar}>
-        <h1 className={styles.brand}>Page Builder</h1>
+        <div className={styles.toolbarRow}>
+          <h1 className={styles.brand}>Page Builder</h1>
 
-        <div className={styles.controls}>
+          <div className={styles.controls}>
           <label className={styles.control}>
             <span className={styles.controlLabel}>Mode</span>
             <select
@@ -487,15 +643,19 @@ export function PageBuilder() {
           </button>
 
           <span className={styles.status} role="status" aria-label="Status">
-            {persistence.state === "saving"
-              ? "Saving"
-              : persistence.state === "error"
-                ? "Save error"
-                : persistence.state === "saved"
-                  ? "Saved"
-                  : undoStackLen > 0
-                    ? "Unsaved"
-                    : "Idle"}
+            {!autosaveEnabled
+              ? "Autosave off"
+              : persistence.state === "saving"
+                ? "Saving"
+                : persistence.state === "error" && persistence.quota
+                  ? "Storage full"
+                  : persistence.state === "error"
+                    ? "Save error"
+                    : persistence.state === "saved"
+                      ? `Saved ${formatShortTime(persistence.at)}`
+                      : undoStackLen > 0
+                        ? "Unsaved"
+                        : "Idle"}
           </span>
           {issues.length > 0 ? (
             <span className={issues.some((i) => i.level === "error") ? styles.statusError : styles.statusWarn} role="status" aria-label="Validation status">
@@ -504,7 +664,64 @@ export function PageBuilder() {
                 : `${issues.length} warnings`}
             </span>
           ) : null}
+
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => autosaveRef.current?.flush()}
+            disabled={!autosaveEnabled || persistence.state === "saving" || Boolean(activeTxn) || (persistence.state === "error" && persistence.quota)}
+            aria-label="Save now"
+          >
+            Save now
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => setResetOpen(true)}
+            disabled={Boolean(activeTxn)}
+            aria-label="Reset document"
+          >
+            Reset
+          </button>
         </div>
+        </div>
+
+        {recovery ? (
+          <div className={styles.banner} data-kind="error" role="status" aria-label="Recovery status">
+            <div className={styles.bannerMessage}>
+              Saved data could not be loaded ({recovery.code}). Autosave is disabled until you recover or reset.
+            </div>
+            <div className={styles.bannerActions}>
+              <button type="button" className={styles.bannerButton} onClick={() => setRecoveryOpen(true)}>
+                Recovery
+              </button>
+              <button type="button" className={styles.bannerButton} onClick={() => setResetOpen(true)}>
+                Reset
+              </button>
+            </div>
+          </div>
+        ) : persistence.state === "error" && persistence.quota ? (
+          <div className={styles.banner} data-kind="error" role="status" aria-label="Storage status">
+            <div className={styles.bannerMessage}>
+              LocalStorage is full. Autosave is paused. Export JSON, then clear saved data to resume saving.
+            </div>
+            <div className={styles.bannerActions}>
+              <button
+                type="button"
+                className={styles.bannerButton}
+                onClick={() => {
+                  setMobilePanel(null);
+                  setDialog("export");
+                }}
+              >
+                Export
+              </button>
+              <button type="button" className={styles.bannerButton} onClick={() => void onClearSavedAfterQuota(docId)}>
+                Clear saved
+              </button>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       <main className={styles.main} data-narrow={isNarrow ? "true" : "false"}>
@@ -633,6 +850,19 @@ export function PageBuilder() {
           replaceDocument={replaceDocument}
           onClose={() => setDialog(null)}
           onToast={pushToast}
+        />
+      ) : null}
+
+      {resetOpen ? <ResetDialog onClose={() => setResetOpen(false)} onConfirm={onConfirmReset} /> : null}
+
+      {recoveryOpen && recovery ? (
+        <RecoveryDialog
+          recovery={recovery}
+          docId={docId}
+          onClose={() => setRecoveryOpen(false)}
+          onOpenReset={() => setResetOpen(true)}
+          onOverwriteSavedAndEnableAutosave={onOverwriteSavedAndEnableAutosave}
+          onLoadBackup={onLoadBackupForRecovery}
         />
       ) : null}
 
@@ -894,15 +1124,10 @@ function ImportDialog(props: {
 
   const parsed = useMemo(() => {
     if (!raw.trim()) return { ok: false as const, error: "Paste JSON or choose a file." };
-    try {
-      const json = JSON.parse(raw);
-      const migrated = migrateToLatest(json);
-      const issues = validateDocument(migrated);
-      return { ok: true as const, doc: migrated, issues };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Invalid JSON.";
-      return { ok: false as const, error: msg };
-    }
+    const res = parseDocumentJsonText(raw);
+    if (!res.ok) return { ok: false as const, error: res.error };
+    const issues = validateDocument(res.doc);
+    return { ok: true as const, doc: res.doc, issues, migratedFrom: res.migratedFrom };
   }, [raw]);
 
   const onChooseFile = async (file: File | null) => {
@@ -999,6 +1224,11 @@ function ImportDialog(props: {
             <div>
               <strong>Schema:</strong> {parsed.doc.meta.schemaVersion}
             </div>
+            {parsed.migratedFrom ? (
+              <div>
+                <strong>Migrated from:</strong> {parsed.migratedFrom}
+              </div>
+            ) : null}
             <div>
               <strong>Nodes:</strong> {Object.keys(parsed.doc.nodes).length}
             </div>
@@ -1008,6 +1238,110 @@ function ImportDialog(props: {
                 ? `${parsed.issues.filter((i) => i.level === "error").length} errors`
                 : `${parsed.issues.length} warnings`}
             </div>
+          </div>
+        ) : null}
+      </div>
+    </Modal>
+  );
+}
+
+function ResetDialog(props: { onClose: () => void; onConfirm: () => void }) {
+  return (
+    <Modal title="Reset document" onClose={props.onClose}>
+      <div className={styles.dialogSection}>
+        <p className={styles.muted}>
+          This clears the saved snapshot and backup in LocalStorage and replaces the current document with the default
+          template.
+        </p>
+        <div className={styles.dialogActions}>
+          <button type="button" className={styles.button} onClick={props.onConfirm}>
+            Reset
+          </button>
+          <button type="button" className={styles.button} onClick={props.onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RecoveryDialog(props: {
+  recovery: RecoveryInfo;
+  docId: string;
+  onClose: () => void;
+  onOpenReset: () => void;
+  onOverwriteSavedAndEnableAutosave: () => void;
+  onLoadBackup: () => void;
+}) {
+  const { recovery } = props;
+  const isFuture = recovery.code === "FUTURE_VERSION";
+
+  const primaryFilename = `recovery.${sanitizeFilename(props.docId)}.primary.json`;
+  const backupFilename = `recovery.${sanitizeFilename(props.docId)}.backup.json`;
+
+  return (
+    <Modal title="Recovery" onClose={props.onClose}>
+      <div className={styles.dialogSection}>
+        <div className={styles.dialogError}>
+          <strong>Load failed:</strong> {recovery.error}
+        </div>
+
+        {isFuture ? (
+          <p className={styles.muted}>
+            A document saved by a newer app version was found. To avoid data loss, saving is disabled until you export the
+            saved JSON and clear LocalStorage.
+          </p>
+        ) : (
+          <p className={styles.muted}>
+            The saved snapshot could not be loaded. You can export the raw JSON for manual recovery and reset the editor
+            to a fresh document.
+          </p>
+        )}
+
+        <div className={styles.dialogActions}>
+          {recovery.rawPrimary ? (
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() => downloadText(primaryFilename, recovery.rawPrimary ?? "", "application/json")}
+            >
+              Download primary JSON
+            </button>
+          ) : null}
+          {recovery.rawBackup ? (
+            <button
+              type="button"
+              className={styles.button}
+              onClick={() => downloadText(backupFilename, recovery.rawBackup ?? "", "application/json")}
+            >
+              Download backup JSON
+            </button>
+          ) : null}
+          {isFuture && recovery.rawBackup ? (
+            <button type="button" className={styles.button} onClick={props.onLoadBackup}>
+              Load backup into editor
+            </button>
+          ) : null}
+          <button type="button" className={styles.button} onClick={props.onOverwriteSavedAndEnableAutosave}>
+            {isFuture ? "Enable saving (overwrite LocalStorage)" : "Enable saving (clear LocalStorage)"}
+          </button>
+          <button type="button" className={styles.button} onClick={props.onOpenReset}>
+            Reset document
+          </button>
+        </div>
+
+        {recovery.rawPrimary ? (
+          <div className={styles.dialogSection}>
+            <div className={styles.dialogSectionTitle}>Primary snapshot (raw)</div>
+            <textarea className={styles.textarea} value={recovery.rawPrimary} readOnly rows={8} />
+          </div>
+        ) : null}
+
+        {recovery.rawBackup ? (
+          <div className={styles.dialogSection}>
+            <div className={styles.dialogSectionTitle}>Backup snapshot (raw)</div>
+            <textarea className={styles.textarea} value={recovery.rawBackup} readOnly rows={8} />
           </div>
         ) : null}
       </div>
@@ -1728,6 +2062,13 @@ function sanitizeFilename(input: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 80);
+}
+
+function formatShortTime(ts: number): string {
+  const d = new Date(ts);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
 }
 
 function downloadText(filename: string, content: string, mime: string) {

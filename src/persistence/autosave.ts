@@ -9,6 +9,13 @@ export type PersistenceStatus =
   | { state: "saved"; at: number }
   | { state: "error"; error: string; quota?: boolean };
 
+export type AutosaveController = {
+  stop: () => void;
+  flush: () => void;
+  resetQuotaBlock: () => void;
+  isQuotaBlocked: () => boolean;
+};
+
 export function startAutosave(
   store: EditorStore,
   docId: string,
@@ -17,7 +24,7 @@ export function startAutosave(
     onStatus?: (status: PersistenceStatus) => void;
     shouldSave?: (doc: Document) => boolean;
   },
-): () => void {
+): AutosaveController {
   const debounceMs = opts?.debounceMs ?? 600;
   const onStatus = opts?.onStatus;
   const shouldSave = opts?.shouldSave ?? (() => true);
@@ -25,7 +32,7 @@ export function startAutosave(
   let timer: number | null = null;
   let blocked = false;
 
-  const flush = (doc: Document) => {
+  const flushDoc = (doc: Document) => {
     if (blocked) return;
     if (!shouldSave(doc)) return;
     onStatus?.({ state: "saving" });
@@ -46,14 +53,27 @@ export function startAutosave(
       if (!shouldSave(doc)) return;
       onStatus?.({ state: "saving" });
       if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => flush(doc), debounceMs);
+      timer = window.setTimeout(() => flushDoc(doc), debounceMs);
     },
     { equalityFn: Object.is },
   );
 
-  return () => {
+  const stop = () => {
     if (timer !== null) window.clearTimeout(timer);
     unsubscribe();
   };
-}
 
+  const flush = () => {
+    if (timer !== null) window.clearTimeout(timer);
+    timer = null;
+    flushDoc(store.getState().doc);
+  };
+
+  const resetQuotaBlock = () => {
+    blocked = false;
+  };
+
+  const isQuotaBlocked = () => blocked;
+
+  return { stop, flush, resetQuotaBlock, isQuotaBlocked };
+}

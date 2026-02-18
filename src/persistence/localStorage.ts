@@ -1,4 +1,6 @@
-import { LATEST_SCHEMA_VERSION, migrateToLatest, type Document } from "@/editor-core";
+import type { Document } from "@/editor-core";
+
+import { parseDocumentJsonText, type ParseDocumentErrorCode } from "./parseDocument";
 
 function docKey(docId: string): string {
   return `pb:doc:${docId}`;
@@ -35,61 +37,83 @@ function safeRemoveItem(key: string): void {
   }
 }
 
-function readSchemaVersion(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") return null;
-  const meta = (raw as Record<string, unknown>).meta;
-  if (!meta || typeof meta !== "object") return null;
-  const schemaVersion = (meta as Record<string, unknown>).schemaVersion;
-  return typeof schemaVersion === "string" ? schemaVersion : null;
-}
-
 export type LoadResult =
-  | { ok: true; doc: Document; recoveredFromBackup?: boolean; migratedFrom?: string }
-  | { ok: false; error: string; raw?: string };
+  | {
+      ok: true;
+      doc: Document;
+      migratedFrom?: string;
+      recoveredFromBackup?: boolean;
+      primaryError?: { code: ParseDocumentErrorCode; error: string };
+      rawPrimary?: string;
+    }
+  | { ok: false; error: string; code: "NOT_FOUND" | ParseDocumentErrorCode; rawPrimary?: string; rawBackup?: string };
 
 export type SaveResult = { ok: true } | { ok: false; error: string; quota?: boolean };
 
 export function loadFromLocalStorage(docId: string): LoadResult {
   const primary = safeGetItem(docKey(docId));
-  if (primary === null) return { ok: false, error: "Not found." };
+  if (primary === null) return { ok: false, code: "NOT_FOUND", error: "Not found." };
 
-  const primaryRes = parseAndMigrate(primary);
+  const primaryRes = parseDocumentJsonText(primary);
   if (primaryRes.ok) return primaryRes;
 
   const backup = safeGetItem(backupKey(docId));
-  if (backup === null) return { ok: false, error: primaryRes.error, raw: primary };
 
-  const backupRes = parseAndMigrate(backup);
-  if (backupRes.ok) return { ...backupRes, recoveredFromBackup: true };
-
-  return { ok: false, error: backupRes.error, raw: primary };
-}
-
-function parseAndMigrate(rawText: string): LoadResult {
-  try {
-    const raw = JSON.parse(rawText) as unknown;
-    const from = readSchemaVersion(raw);
-    const doc = migrateToLatest(raw);
-    const migratedFrom = from && from !== LATEST_SCHEMA_VERSION ? from : undefined;
-    return { ok: true, doc, migratedFrom };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Invalid JSON.";
-    return { ok: false, error: msg };
+  if (primaryRes.code === "FUTURE_VERSION") {
+    return {
+      ok: false,
+      code: primaryRes.code,
+      error: primaryRes.error,
+      rawPrimary: primary,
+      rawBackup: backup ?? undefined,
+    };
   }
+
+  if (backup === null) {
+    return { ok: false, code: primaryRes.code, error: primaryRes.error, rawPrimary: primary };
+  }
+
+  const backupRes = parseDocumentJsonText(backup);
+  if (backupRes.ok) {
+    return {
+      ok: true,
+      doc: backupRes.doc,
+      migratedFrom: backupRes.migratedFrom,
+      recoveredFromBackup: true,
+      primaryError: { code: primaryRes.code, error: primaryRes.error },
+      rawPrimary: primary,
+    };
+  }
+
+  return {
+    ok: false,
+    code: backupRes.code,
+    error: backupRes.error,
+    rawPrimary: primary,
+    rawBackup: backup,
+  };
 }
 
-export function saveToLocalStorage(docId: string, doc: Document): SaveResult {
+export function loadBackupFromLocalStorage(docId: string): LoadResult {
+  const backup = safeGetItem(backupKey(docId));
+  if (backup === null) return { ok: false, code: "NOT_FOUND", error: "Not found." };
+
+  return parseDocumentJsonText(backup);
+}
+
+export function saveToLocalStorage(docId: string, doc: Document, opts?: { rotateBackup?: boolean }): SaveResult {
   const primaryKey = docKey(docId);
-  const backup = safeGetItem(primaryKey);
   const next = JSON.stringify(doc, null, 2);
 
-  if (backup !== null) {
-    const backupRes = safeSetItem(backupKey(docId), backup);
-    if (!backupRes.ok) return backupRes;
-  }
+  const prevPrimary = opts?.rotateBackup === false ? null : safeGetItem(primaryKey);
 
   const res = safeSetItem(primaryKey, next);
   if (!res.ok) return res;
+
+  if (prevPrimary !== null) {
+    // Best-effort backup rotation. Primary already written.
+    safeSetItem(backupKey(docId), prevPrimary);
+  }
 
   return { ok: true };
 }
@@ -104,4 +128,3 @@ export function clearLocalStorage(docId: string): { ok: true } | { ok: false; er
     return { ok: false, error: msg };
   }
 }
-
