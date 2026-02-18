@@ -50,6 +50,46 @@ describe("editor-core", () => {
     expect(normalized.nodes[sectionAfter.children[0]]?.type).toBe("columns");
   });
 
+  test("normalizeDocument removes orphan nodes and missing child references", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const idFactory = createDeterministicIdFactory({ startAt: { text: 10, divider: 10 } });
+
+    const orphan = createNode("text", { idFactory, parentId: null, props: { text: "Orphan" } });
+    doc.nodes[orphan.id] = orphan;
+
+    // Add a broken child id reference that does not exist in doc.nodes.
+    doc.nodes.column_1.children = ["missing_child_id"];
+
+    const normalized = normalizeDocument(doc);
+    expect(normalized.nodes[orphan.id]).toBeUndefined();
+    expect(normalized.nodes.column_1.children).not.toContain("missing_child_id");
+  });
+
+  test("normalizeDocument resolves multi-parent children to a single parent", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const idFactory = createDeterministicIdFactory({ startAt: { text: 10 } });
+
+    const shared = createNode("text", { idFactory, parentId: "column_1", props: { text: "Shared" } });
+    doc.nodes[shared.id] = shared;
+    doc.nodes.column_1.children = [shared.id];
+    doc.nodes.column_2.children = [shared.id];
+
+    const normalized = normalizeDocument(doc);
+    const col1 = normalized.nodes.column_1;
+    const col2 = normalized.nodes.column_2;
+    const sharedAfter = normalized.nodes[shared.id];
+
+    expect(col1.type).toBe("column");
+    expect(col2.type).toBe("column");
+    expect(sharedAfter?.type).toBe("text");
+
+    const inCol1 = col1.children.includes(shared.id);
+    const inCol2 = col2.children.includes(shared.id);
+    expect(inCol1 || inCol2).toBe(true);
+    expect(inCol1 && inCol2).toBe(false);
+    expect(sharedAfter?.parentId).toBe(inCol1 ? col1.id : col2.id);
+  });
+
   test("cloneSubtree + remapIds remaps ids and rewrites relationships", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const subtree = cloneSubtree(doc, doc.rootId);
@@ -74,4 +114,3 @@ describe("editor-core", () => {
     ).toThrow();
   });
 });
-

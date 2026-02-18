@@ -16,6 +16,15 @@ describe("canDrop", () => {
     expect(res.ok).toBe(true);
   });
 
+  test("rejects dropping non-Column blocks into Columns directly", () => {
+    const doc = createDefaultDocument();
+    const sectionId = doc.nodes[doc.rootId].children[0];
+    const columnsId = doc.nodes[sectionId].children[0];
+
+    const res = canDrop(doc, { kind: "palette", nodeType: "text" }, { parentId: columnsId, index: 0 });
+    expect(res).toEqual({ ok: false, reason: "Cannot insert into Columns directly." });
+  });
+
   test("rejects palette Columns into a Section that already has its layout child", () => {
     const doc = createDefaultDocument();
     const sectionId = doc.nodes[doc.rootId].children[0];
@@ -29,6 +38,15 @@ describe("canDrop", () => {
     const source: DragPayload = { kind: "node", nodeId: doc.rootId };
     const res = canDrop(doc, source, { parentId: doc.rootId, index: 0 });
     expect(res).toEqual({ ok: false, reason: "Cannot move the root node." });
+  });
+
+  test("rejects moving managed Columns out of a Section", () => {
+    const doc = createDefaultDocument();
+    const sectionId = doc.nodes[doc.rootId].children[0];
+    const columnsId = doc.nodes[sectionId].children[0];
+
+    const res = canDrop(doc, { kind: "node", nodeId: columnsId }, { parentId: doc.rootId, index: 0 });
+    expect(res).toEqual({ ok: false, reason: "Cannot move this node because it is required by its parent structure." });
   });
 
   test("rejects moving a node into its own subtree", () => {
@@ -47,6 +65,30 @@ describe("canDrop", () => {
 
     const res = canDrop(doc, { kind: "node", nodeId: containerA.id }, { parentId: containerB.id, index: 0 });
     expect(res).toEqual({ ok: false, reason: "Cannot move a node into its own subtree." });
+  });
+
+  test("rejects moving a Column between different Columns layouts", () => {
+    const doc = createDefaultDocument();
+    const idFactory = createDeterministicIdFactory({ startAt: { section: 2, columns: 2, column: 3 } });
+
+    const pageId = doc.rootId;
+    const section2 = createNode("section", { idFactory, parentId: pageId });
+    const columns2 = createNode("columns", { idFactory, parentId: section2.id });
+    const col3 = createNode("column", { idFactory, parentId: columns2.id });
+    const col4 = createNode("column", { idFactory, parentId: columns2.id });
+
+    doc.nodes[section2.id] = section2;
+    doc.nodes[columns2.id] = columns2;
+    doc.nodes[col3.id] = col3;
+    doc.nodes[col4.id] = col4;
+
+    doc.nodes[pageId].children.push(section2.id);
+    doc.nodes[section2.id].children = [columns2.id];
+    doc.nodes[columns2.id].children = [col3.id, col4.id];
+
+    const sourceCol = doc.nodes.columns_1.children[0];
+    const res = canDrop(doc, { kind: "node", nodeId: sourceCol }, { parentId: columns2.id, index: 0 });
+    expect(res).toEqual({ ok: false, reason: "Columns cannot be moved between layouts. Change the columns count instead." });
   });
 
   test("rejects drops into locked containers", () => {

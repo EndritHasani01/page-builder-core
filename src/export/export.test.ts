@@ -14,6 +14,16 @@ describe("export", () => {
     expect(json.endsWith("\n")).toBe(false);
   });
 
+  test("exportDocumentToHtml returns no warnings for a safe document", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "snippet" });
+
+    expect(res.warnings).toEqual([]);
+    expect(res.html).toContain("<div");
+    expect(res.html).toContain('lang="en"');
+    expect(res.html).not.toContain("data-node-id");
+  });
+
   test("exportDocumentToHtml removes unsafe URLs and omits editor markers", async () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory({ startAt: { button: 10, image: 10, text: 10 } });
@@ -64,6 +74,7 @@ describe("export", () => {
     expect(res.html).not.toContain("data-dnd-");
 
     const warningText = res.warnings.join("\n");
+    expect(warningText).toContain("hidden node(s)");
     expect(warningText).toContain("Unsafe URLs");
     expect(warningText).toContain("button.href");
     expect(warningText).toContain("image.src");

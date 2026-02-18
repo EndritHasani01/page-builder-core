@@ -79,6 +79,7 @@ export function computeDropIntent(args: {
 
   let cursor: NodeId | null = args.overContainerId;
   let lastReason = "Invalid drop target.";
+  let firstReason: string | null = null;
 
   while (cursor) {
     const cursorNode: Node | undefined = args.doc.nodes[cursor];
@@ -112,8 +113,11 @@ export function computeDropIntent(args: {
     }
 
     lastReason = res.reason;
+    if (cursor === args.overContainerId && firstReason === null) {
+      firstReason = res.reason;
+    }
     cursor = cursorNode.parentId ?? null;
   }
 
-  return { ok: false, overId: args.overContainerId, reason: lastReason };
+  return { ok: false, overId: args.overContainerId, reason: firstReason ?? lastReason };
 }
