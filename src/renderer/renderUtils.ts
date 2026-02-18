@@ -1,49 +1,9 @@
 import type { CSSProperties } from "react";
 
-import type { Breakpoint, Responsive, StyleProps, Theme } from "@/editor-core";
+import type { StyleProps, Theme } from "@/editor-core";
+import { STYLE_KEYS } from "@/editor-core";
 
-const STYLE_KEYS: Array<keyof StyleProps> = [
-  "display",
-  "flexDirection",
-  "justifyContent",
-  "alignItems",
-  "gap",
-  "padding",
-  "margin",
-  "width",
-  "maxWidth",
-  "minHeight",
-  "fontFamily",
-  "fontSize",
-  "fontWeight",
-  "lineHeight",
-  "textAlign",
-  "color",
-  "backgroundColor",
-  "borderRadius",
-  "border",
-  "boxShadow",
-  "opacity",
-];
-
-export function resolveResponsiveStyle(
-  style: Responsive<StyleProps> | undefined,
-  breakpoint: Breakpoint,
-): StyleProps {
-  if (!style) return {};
-
-  const base = style.base ?? {};
-  if (breakpoint === "base") return { ...base };
-
-  const sm = style.sm ?? {};
-  if (breakpoint === "sm") return { ...base, ...sm };
-
-  const md = style.md ?? {};
-  if (breakpoint === "md") return { ...base, ...sm, ...md };
-
-  const lg = style.lg ?? {};
-  return { ...base, ...sm, ...md, ...lg };
-}
+export { resolveResponsiveStyle } from "@/editor-core";
 
 export function stylePropsToCss(style: StyleProps): CSSProperties {
   const out: CSSProperties = {};
@@ -81,4 +41,3 @@ export function themeToCssVars(theme: Theme): CSSProperties {
 
   return vars as CSSProperties;
 }
-

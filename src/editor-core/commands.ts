@@ -6,6 +6,7 @@ import { blockRegistry } from "./registry";
 import { createNode } from "./nodeFactory";
 import { cloneSubtree, remapIds } from "./subtree";
 import { collectSubtreeIds, getChildIndex, getNode, wouldCreateCycle } from "./graph";
+import { STYLE_KEYS } from "./style";
 import type {
   Breakpoint,
   Document,
@@ -33,6 +34,7 @@ export type DocCommand =
   | { type: "DUPLICATE_NODE"; nodeId: NodeId; parentId?: NodeId; index?: number }
   | { type: "UPDATE_PROPS"; nodeId: NodeId; patch: Record<string, unknown> }
   | { type: "UPDATE_STYLE"; nodeId: NodeId; breakpoint: Breakpoint; patch: Partial<StyleProps> }
+  | { type: "RESET_STYLE_BREAKPOINT"; nodeId: NodeId; breakpoint: Breakpoint }
   | { type: "SET_COLUMNS"; nodeId: NodeId; columns: number }
   | { type: "INSERT_SUBTREE"; parentId: NodeId; index?: number; subtree: Subtree };
 
@@ -54,30 +56,6 @@ type ApplyCtx = {
 type DraftDoc = Draft<Document>;
 
 const PROHIBITED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-
-const STYLE_KEYS: Array<keyof StyleProps> = [
-  "display",
-  "flexDirection",
-  "justifyContent",
-  "alignItems",
-  "gap",
-  "padding",
-  "margin",
-  "width",
-  "maxWidth",
-  "minHeight",
-  "fontFamily",
-  "fontSize",
-  "fontWeight",
-  "lineHeight",
-  "textAlign",
-  "color",
-  "backgroundColor",
-  "borderRadius",
-  "border",
-  "boxShadow",
-  "opacity",
-];
 
 function pushIssue(ctx: ApplyCtx, issue: ValidationIssue) {
   ctx.issues.push(issue);
@@ -684,6 +662,54 @@ function applyUpdateStyle(
   if (bp !== "base" && Object.keys(target as Record<string, unknown>).length === 0) {
     delete (node.style as Record<string, unknown>)[bp];
   }
+
+  cleanupEmptyStyle(node);
+}
+
+function applyResetStyleBreakpoint(
+  doc: DraftDoc,
+  ctx: ApplyCtx,
+  cmd: Extract<DocCommand, { type: "RESET_STYLE_BREAKPOINT" }>,
+) {
+  const node = doc.nodes[cmd.nodeId];
+  if (!node) {
+    pushIssue(ctx, { nodeId: cmd.nodeId, level: "error", message: "Node does not exist." });
+    return;
+  }
+  if (isLocked(node)) {
+    pushIssue(ctx, { nodeId: node.id, level: "error", message: "This node is locked." });
+    return;
+  }
+
+  if (!node.style) return;
+
+  if (cmd.breakpoint === "base") {
+    node.style.base = {};
+  } else {
+    delete (node.style as Record<string, unknown>)[cmd.breakpoint];
+  }
+
+  cleanupEmptyStyle(node);
+}
+
+function cleanupEmptyStyle(node: Draft<Node>) {
+  const style = node.style;
+  if (!style) return;
+
+  const baseEmpty = Object.keys(style.base ?? {}).length === 0;
+
+  for (const bp of ["sm", "md", "lg"] as const) {
+    const bucket = style[bp];
+    if (!bucket) continue;
+    if (Object.keys(bucket).length === 0) {
+      delete (style as Record<string, unknown>)[bp];
+    }
+  }
+
+  const hasOverrides = Boolean(style.sm || style.md || style.lg);
+  if (baseEmpty && !hasOverrides) {
+    delete (node as Record<string, unknown>).style;
+  }
 }
 
 export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: ApplyCtx): void {
@@ -708,6 +734,9 @@ export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: Appl
       return;
     case "UPDATE_STYLE":
       applyUpdateStyle(doc, ctx, cmd);
+      return;
+    case "RESET_STYLE_BREAKPOINT":
+      applyResetStyleBreakpoint(doc, ctx, cmd);
       return;
     case "SET_COLUMNS":
       setColumnsCount(doc, ctx, cmd.nodeId, cmd.columns);

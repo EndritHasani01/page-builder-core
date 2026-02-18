@@ -126,6 +126,8 @@ function defaultHistoryLabel(action: DocCommand): string {
       return "Edit";
     case "UPDATE_STYLE":
       return "Style";
+    case "RESET_STYLE_BREAKPOINT":
+      return "Reset styles";
     case "SET_COLUMNS":
       return "Set columns";
     case "INSERT_SUBTREE":

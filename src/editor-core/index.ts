@@ -56,6 +56,18 @@ export { DocumentMigrationError, migrateToLatest } from "./migrate";
 
 export { isProbablySafeUrl, isValidCssLengthOrVar } from "./validationUtils";
 
+export {
+  STYLE_KEYS,
+  getEffectiveStyleValue,
+  getInheritedStyleValue,
+  isStyleKeyOverridden,
+  previousBreakpoint,
+  resolveResponsiveStyle,
+} from "./style";
+
+export type { TokenOption } from "./styleTokens";
+export { COLOR_TOKENS, FONT_FAMILY_TOKENS, FONT_SIZE_TOKENS, getSpacingTokens } from "./styleTokens";
+
 export type { DocCommand, ApplyDocCommandResult } from "./commands";
 export {
   applyCommand,
