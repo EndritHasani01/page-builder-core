@@ -1,0 +1,200 @@
+import { z } from "zod";
+
+import { BREAKPOINTS, LATEST_SCHEMA_VERSION, NODE_TYPES } from "./constants";
+
+const NodeIdSchema = z.string().min(1);
+
+const NodeConstraintsSchema = z
+  .object({
+    locked: z.boolean().optional(),
+    hidden: z.boolean().optional(),
+    draggable: z.boolean().optional(),
+    deletable: z.boolean().optional(),
+    droppable: z.boolean().optional(),
+  })
+  .strict();
+
+const StylePropsSchema = z
+  .object({
+    display: z.enum(["block", "flex"]).optional(),
+    flexDirection: z.enum(["row", "column"]).optional(),
+    justifyContent: z.enum(["flex-start", "center", "flex-end", "space-between"]).optional(),
+    alignItems: z.enum(["stretch", "flex-start", "center", "flex-end"]).optional(),
+    gap: z.string().optional(),
+
+    padding: z.string().optional(),
+    margin: z.string().optional(),
+    width: z.string().optional(),
+    maxWidth: z.string().optional(),
+    minHeight: z.string().optional(),
+
+    fontFamily: z.string().optional(),
+    fontSize: z.string().optional(),
+    fontWeight: z.union([z.number(), z.string()]).optional(),
+    lineHeight: z.string().optional(),
+    textAlign: z.enum(["left", "center", "right"]).optional(),
+    color: z.string().optional(),
+
+    backgroundColor: z.string().optional(),
+    borderRadius: z.string().optional(),
+    border: z.string().optional(),
+    boxShadow: z.string().optional(),
+    opacity: z.number().optional(),
+  })
+  .strict();
+
+const ResponsiveStyleSchema = z
+  .object({
+    base: StylePropsSchema,
+    sm: StylePropsSchema.partial().optional(),
+    md: StylePropsSchema.partial().optional(),
+    lg: StylePropsSchema.partial().optional(),
+  })
+  .strict();
+
+const NodeBaseSchema = z
+  .object({
+    id: NodeIdSchema,
+    parentId: NodeIdSchema.nullable(),
+    children: z.array(NodeIdSchema),
+    constraints: NodeConstraintsSchema.optional(),
+    style: ResponsiveStyleSchema.optional(),
+  })
+  .strict();
+
+const PagePropsSchema = z
+  .object({
+    title: z.string(),
+    lang: z.string(),
+  })
+  .strict();
+
+const SectionPropsSchema = z
+  .object({
+    variant: z.enum(["default", "hero"]),
+    fullWidth: z.boolean(),
+  })
+  .strict();
+
+const ColumnsPropsSchema = z
+  .object({
+    columns: z.number(),
+    gap: z.string(),
+  })
+  .strict();
+
+const ColumnPropsSchema = z
+  .object({
+    width: z.string().optional(),
+  })
+  .strict();
+
+const ContainerPropsSchema = z
+  .object({
+    as: z.enum(["div", "main", "header", "footer"]),
+  })
+  .strict();
+
+const TextPropsSchema = z
+  .object({
+    text: z.string(),
+    as: z.enum(["p", "h1", "h2", "h3", "span"]),
+  })
+  .strict();
+
+const ImagePropsSchema = z
+  .object({
+    src: z.string(),
+    alt: z.string(),
+    fit: z.enum(["cover", "contain"]),
+    linkTo: z.string().optional(),
+  })
+  .strict();
+
+const ButtonPropsSchema = z
+  .object({
+    label: z.string(),
+    href: z.string(),
+    variant: z.enum(["primary", "secondary"]),
+  })
+  .strict();
+
+const SpacerPropsSchema = z
+  .object({
+    height: z.string(),
+  })
+  .strict();
+
+const DividerPropsSchema = z
+  .object({
+    thickness: z.string(),
+    color: z.string(),
+  })
+  .strict();
+
+export const NodeSchema = z.discriminatedUnion("type", [
+  NodeBaseSchema.extend({ type: z.literal("page"), props: PagePropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("section"), props: SectionPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("columns"), props: ColumnsPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("column"), props: ColumnPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("container"), props: ContainerPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("text"), props: TextPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("image"), props: ImagePropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("button"), props: ButtonPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("spacer"), props: SpacerPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("divider"), props: DividerPropsSchema }),
+]);
+
+export const ThemeSchema = z
+  .object({
+    colors: z
+      .object({
+        background: z.string(),
+        text: z.string(),
+        primary: z.string(),
+        border: z.string(),
+      })
+      .strict(),
+    typography: z
+      .object({
+        fontFamily: z.string(),
+        baseFontSize: z.string(),
+        scale: z.number(),
+      })
+      .strict(),
+    spacing: z.object({ unit: z.string() }).strict(),
+    breakpoints: z
+      .object({
+        sm: z.number(),
+        md: z.number(),
+        lg: z.number(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const DocumentMetaSchema = z
+  .object({
+    schemaVersion: z.literal(LATEST_SCHEMA_VERSION),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    title: z.string(),
+  })
+  .strict();
+
+export const DocumentSchema = z
+  .object({
+    meta: DocumentMetaSchema,
+    theme: ThemeSchema,
+    rootId: NodeIdSchema,
+    nodes: z.record(NodeIdSchema, NodeSchema),
+  })
+  .strict();
+
+export function safeParseDocument(raw: unknown) {
+  return DocumentSchema.safeParse(raw);
+}
+
+export const SupportedNodeTypeSchema = z.enum(NODE_TYPES);
+export const SupportedBreakpointSchema = z.enum(BREAKPOINTS);
+
