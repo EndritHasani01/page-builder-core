@@ -101,6 +101,13 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
     props.onSelect?.(node.id);
   } : undefined;
 
+  const onFocusNode =
+    props.mode === "editor" && props.onSelect
+      ? () => {
+          props.onSelect?.(node.id);
+        }
+      : undefined;
+
   const onMouseEnter =
     props.mode === "editor" && props.onHover
       ? () => props.onHover?.(node.id)
@@ -120,6 +127,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
           data-dnd-handle="true"
           aria-label={`Drag ${blockRegistry[node.type].label}`}
           onClick={onSelectNode}
+          onFocus={onFocusNode}
         >
           Drag
         </button>
@@ -236,6 +244,12 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     props.onSelect?.(node.id);
   } : undefined;
 
+  const onFocusNode = props.onSelect
+    ? () => {
+        props.onSelect?.(node.id);
+      }
+    : undefined;
+
   const onMouseEnter = props.onHover ? () => props.onHover?.(node.id) : undefined;
   const onMouseLeave = props.onHover ? () => props.onHover?.(node.parentId) : undefined;
 
@@ -248,6 +262,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
         data-dnd-handle="true"
         aria-label={`Drag ${blockRegistry[node.type].label}`}
         onClick={onSelectNode}
+        onFocus={onFocusNode}
         {...dragAttributes}
         {...dragListeners}
       >

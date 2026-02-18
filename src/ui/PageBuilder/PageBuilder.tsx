@@ -1,5 +1,5 @@
 import type { CSSProperties, ChangeEvent, KeyboardEvent, MouseEvent } from "react";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import {
   closestCenter,
@@ -11,6 +11,7 @@ import {
   useDraggable,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
   type DragMoveEvent,
   type DragStartEvent,
@@ -48,6 +49,7 @@ import {
   saveToLocalStorage,
   startAutosave,
 } from "@/persistence";
+import { getShortcutAction, isEditableTarget } from "@/ui/keyboard/shortcuts";
 
 import styles from "./PageBuilder.module.css";
 
@@ -73,12 +75,15 @@ export function PageBuilder() {
   const dispatch = useEditorStore((s) => s.dispatch);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
+  const copySelected = useEditorStore((s) => s.copySelected);
+  const cutSelected = useEditorStore((s) => s.cutSelected);
+  const paste = useEditorStore((s) => s.paste);
   const beginTransaction = useEditorStore((s) => s.beginTransaction);
   const commitTransaction = useEditorStore((s) => s.commitTransaction);
   const replaceDocument = useEditorStore((s) => s.replaceDocument);
 
   const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
-  const [dialog, setDialog] = useState<null | "import" | "export">(null);
+  const [dialog, setDialog] = useState<null | "import" | "export" | "shortcuts">(null);
   const [mobilePanel, setMobilePanel] = useState<null | "palette" | "inspector">(null);
   const [persistence, setPersistence] = useState<PersistenceStatus>({ state: "idle" });
   const [autosaveEnabled, setAutosaveEnabled] = useState(false);
@@ -94,6 +99,7 @@ export function PageBuilder() {
   const [dropIndicator, setDropIndicator] = useState<null | DropIndicatorGeometry>(null);
   const dragStartPoint = useRef<{ x: number; y: number } | null>(null);
   const lastIntentKey = useRef<string | null>(null);
+  const canvasFrameRef = useRef<HTMLDivElement | null>(null);
   const canvasBodyRef = useRef<HTMLDivElement | null>(null);
 
   const [toasts, setToasts] = useState<Array<{ id: string; kind: "info" | "error"; message: string }>>([]);
@@ -120,6 +126,192 @@ export function PageBuilder() {
 
   const docId = "default";
   const isNarrow = useMediaQuery("(max-width: 1024px)");
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const selectionDescId = useId();
+
+  const latestRef = useRef({
+    doc,
+    selectedId,
+    mode,
+    dialog,
+    mobilePanel,
+    resetOpen,
+    recoveryOpen,
+    activeDrag,
+    dropIntent,
+    dropInvalid,
+    activeTxn,
+  });
+
+  useLayoutEffect(() => {
+    latestRef.current = {
+      doc,
+      selectedId,
+      mode,
+      dialog,
+      mobilePanel,
+      resetOpen,
+      recoveryOpen,
+      activeDrag,
+      dropIntent,
+      dropInvalid,
+      activeTxn,
+    };
+  }, [activeDrag, activeTxn, dialog, doc, dropIntent, dropInvalid, mobilePanel, mode, recoveryOpen, resetOpen, selectedId]);
+
+  const focusCanvasFrame = useCallback(() => {
+    const el = canvasFrameRef.current;
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      el.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      const action = getShortcutAction(e);
+      if (!action) return;
+
+      if (latestRef.current.activeDrag) return;
+
+      const isDialogOpen =
+        latestRef.current.dialog !== null ||
+        latestRef.current.mobilePanel !== null ||
+        latestRef.current.resetOpen ||
+        latestRef.current.recoveryOpen;
+
+      if (action !== "ESCAPE" && isEditableTarget(e.target)) return;
+      if (isDialogOpen && action !== "ESCAPE") return;
+
+      const modeNow = latestRef.current.mode;
+      if (modeNow === "preview" && action !== "ESCAPE" && action !== "TOGGLE_MODE") return;
+
+      if (latestRef.current.activeTxn && action !== "ESCAPE") return;
+
+      switch (action) {
+        case "ESCAPE": {
+          if (isDialogOpen) {
+            e.preventDefault();
+            if (latestRef.current.dialog !== null) setDialog(null);
+            else if (latestRef.current.resetOpen) setResetOpen(false);
+            else if (latestRef.current.recoveryOpen) setRecoveryOpen(false);
+            else if (latestRef.current.mobilePanel !== null) setMobilePanel(null);
+            return;
+          }
+
+          e.preventDefault();
+          const d = latestRef.current.doc;
+          dispatch({ type: "SET_SELECTED", nodeId: d.rootId });
+          dispatch({ type: "SET_HOVERED", nodeId: null });
+          focusCanvasFrame();
+          return;
+        }
+
+        case "TOGGLE_MODE": {
+          e.preventDefault();
+          dispatch({ type: "SET_MODE", mode: modeNow === "edit" ? "preview" : "edit" });
+          focusCanvasFrame();
+          return;
+        }
+
+        case "UNDO": {
+          e.preventDefault();
+          undo();
+          focusCanvasFrame();
+          return;
+        }
+
+        case "REDO": {
+          e.preventDefault();
+          redo();
+          focusCanvasFrame();
+          return;
+        }
+
+        case "COPY": {
+          e.preventDefault();
+          const res = copySelected();
+          if (!res.ok) pushToast("error", res.error);
+          return;
+        }
+
+        case "CUT": {
+          e.preventDefault();
+          const res = cutSelected();
+          if (!res.ok) {
+            pushToast("error", res.error);
+            return;
+          }
+          focusCanvasFrame();
+          return;
+        }
+
+        case "PASTE": {
+          e.preventDefault();
+          const res = paste();
+          if (!res.ok) {
+            pushToast("error", res.error);
+            return;
+          }
+          focusCanvasFrame();
+          return;
+        }
+
+        case "DELETE_SELECTED": {
+          e.preventDefault();
+          const d = latestRef.current.doc;
+          const id = latestRef.current.selectedId;
+          if (!id || id === d.rootId) {
+            pushToast("error", "Cannot delete the root Page node.");
+            return;
+          }
+          dispatch({ type: "DELETE_NODE", nodeId: id }, { historyLabel: "Delete" });
+          focusCanvasFrame();
+          return;
+        }
+
+        case "DUPLICATE_SELECTED": {
+          e.preventDefault();
+          const d = latestRef.current.doc;
+          const id = latestRef.current.selectedId;
+          if (!id || id === d.rootId) {
+            pushToast("error", "Cannot duplicate the root Page node.");
+            return;
+          }
+          dispatch({ type: "DUPLICATE_NODE", nodeId: id }, { historyLabel: "Duplicate" });
+          focusCanvasFrame();
+          return;
+        }
+
+        case "MOVE_UP":
+        case "MOVE_DOWN": {
+          e.preventDefault();
+          const d = latestRef.current.doc;
+          const id = latestRef.current.selectedId;
+          if (!id || id === d.rootId) return;
+          const node = d.nodes[id];
+          const parentId = node?.parentId;
+          if (!node || !parentId) return;
+          const parent = d.nodes[parentId];
+          const from = parent?.children.indexOf(id) ?? -1;
+          if (!parent || from < 0) return;
+
+          const delta = action === "MOVE_UP" ? -1 : 1;
+          const to = from + delta;
+          if (to < 0 || to >= parent.children.length) return;
+
+          dispatch({ type: "MOVE_NODE", nodeId: id, parentId, index: to }, { historyLabel: "Reorder" });
+          focusCanvasFrame();
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [copySelected, cutSelected, dispatch, focusCanvasFrame, paste, pushToast, redo, undo]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -130,6 +322,86 @@ export function PageBuilder() {
     const pointerHits = pointerWithin(args);
     return pointerHits.length > 0 ? pointerHits : closestCenter(args);
   }, []);
+
+  const lastDndAnnouncement = useRef<string | null>(null);
+
+  const dndAnnouncements = useMemo(() => {
+    const maybeAnnounce = (msg: string | undefined) => {
+      if (!msg) return undefined;
+      if (lastDndAnnouncement.current === msg) return undefined;
+      lastDndAnnouncement.current = msg;
+      return msg;
+    };
+
+    const describeActive = (activeId: unknown): string => {
+      const paletteType = parsePaletteDragId(activeId);
+      if (paletteType) return `${blockRegistry[paletteType].label} block`;
+
+      const nodeId = parseNodeDragId(activeId);
+      if (nodeId) {
+        const node = latestRef.current.doc.nodes[nodeId];
+        if (node) return `${blockRegistry[node.type].label} block`;
+      }
+
+      return "block";
+    };
+
+    const describeIntent = (intent: DropIntent): string => {
+      const d = latestRef.current.doc;
+      const container = describeNodeForA11y(d, intent.parentId);
+      return `${container}, position ${intent.index + 1}`;
+    };
+
+    const announceCurrentTarget = () => {
+      const invalid = latestRef.current.dropInvalid;
+      if (invalid) {
+        return maybeAnnounce(`Cannot drop here. ${invalid.reason}`);
+      }
+
+      const intent = latestRef.current.dropIntent;
+      if (!intent) return undefined;
+      return maybeAnnounce(`Moving to ${describeIntent(intent)}.`);
+    };
+
+    return {
+      onDragStart({ active }) {
+        lastDndAnnouncement.current = null;
+        return maybeAnnounce(`Picked up ${describeActive(active.id)}.`);
+      },
+      onDragMove() {
+        return announceCurrentTarget();
+      },
+      onDragOver() {
+        return announceCurrentTarget();
+      },
+      onDragEnd({ active }) {
+        const intent = latestRef.current.dropIntent;
+        if (intent) {
+          return maybeAnnounce(`Dropped ${describeActive(active.id)} into ${describeIntent(intent)}.`);
+        }
+
+        const invalid = latestRef.current.dropInvalid;
+        if (invalid) {
+          return maybeAnnounce(`Drop cancelled. ${invalid.reason}`);
+        }
+
+        return maybeAnnounce(`Drop cancelled for ${describeActive(active.id)}.`);
+      },
+      onDragCancel({ active }) {
+        const msg = `Cancelled dragging ${describeActive(active.id)}.`;
+        lastDndAnnouncement.current = null;
+        return maybeAnnounce(msg);
+      },
+    } satisfies Announcements;
+  }, []);
+
+  const dndScreenReaderInstructions = useMemo(
+    () => ({
+      draggable:
+        "To pick up a block, press space. While dragging, use the arrow keys to move. Press space again to drop, or Escape to cancel.",
+    }),
+    [],
+  );
 
   useEffect(() => {
     const loaded = loadFromLocalStorage(docId);
@@ -303,6 +575,7 @@ export function PageBuilder() {
 
   const isPreview = mode === "preview";
   const renderMode = isPreview ? "preview" : "editor";
+  const selectionBreadcrumb = useMemo(() => buildSelectionBreadcrumb(doc, selectedId), [doc, selectedId]);
 
   const onSelect = useCallback(
     (nodeId: NodeId) => {
@@ -324,19 +597,9 @@ export function PageBuilder() {
       if (e.target !== e.currentTarget) return;
       dispatch({ type: "SET_SELECTED", nodeId: doc.rootId });
       dispatch({ type: "SET_HOVERED", nodeId: null });
+      focusCanvasFrame();
     },
-    [dispatch, doc.rootId, isPreview],
-  );
-
-  const onCanvasKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLDivElement>) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        dispatch({ type: "SET_SELECTED", nodeId: doc.rootId });
-        dispatch({ type: "SET_HOVERED", nodeId: null });
-      }
-    },
-    [dispatch, doc.rootId],
+    [dispatch, doc.rootId, focusCanvasFrame, isPreview],
   );
 
   const insertFromPalette = useCallback(
@@ -373,6 +636,9 @@ export function PageBuilder() {
     setDropIndicator(null);
     dragStartPoint.current = null;
     lastIntentKey.current = null;
+    latestRef.current.activeDrag = null;
+    latestRef.current.dropIntent = null;
+    latestRef.current.dropInvalid = null;
   }, []);
 
   const computeDropFromEvent = useCallback(
@@ -402,6 +668,8 @@ export function PageBuilder() {
           lastIntentKey.current = key;
           setDropIntent(next.intent);
         }
+        latestRef.current.dropIntent = next.intent;
+        latestRef.current.dropInvalid = null;
         if (dropInvalid !== null) setDropInvalid(null);
         const canvasEl = canvasBodyRef.current;
         const geom = canvasEl ? computeDropIndicatorGeometry(doc, next.intent, canvasEl) : null;
@@ -411,12 +679,15 @@ export function PageBuilder() {
 
       lastIntentKey.current = null;
       if (dropIntent !== null) setDropIntent(null);
+      latestRef.current.dropIntent = null;
       if (next.invalid) {
+        latestRef.current.dropInvalid = next.invalid;
         setDropInvalid((prev) => {
           if (prev && prev.overId === next.invalid!.overId && prev.reason === next.invalid!.reason) return prev;
           return next.invalid;
         });
       } else if (dropInvalid !== null) {
+        latestRef.current.dropInvalid = null;
         setDropInvalid(null);
       }
       setDropIndicator(null);
@@ -439,9 +710,12 @@ export function PageBuilder() {
       dragStartPoint.current = pointerFromActivatorEvent(event.activatorEvent);
       lastIntentKey.current = null;
       setActiveDrag(payload);
+      latestRef.current.activeDrag = payload;
       setDropIntent(null);
       setDropInvalid(null);
       setDropIndicator(null);
+      latestRef.current.dropIntent = null;
+      latestRef.current.dropInvalid = null;
 
       if (payload.kind === "node") {
         dispatch({ type: "SET_SELECTED", nodeId: payload.nodeId });
@@ -536,6 +810,7 @@ export function PageBuilder() {
   return (
     <div className={styles.themeRoot} style={themeStyle}>
       <DndContext
+        accessibility={{ announcements: dndAnnouncements, screenReaderInstructions: dndScreenReaderInstructions }}
         sensors={sensors}
         collisionDetection={collisionDetection}
         onDragStart={onDragStart}
@@ -592,6 +867,18 @@ export function PageBuilder() {
             aria-label="Redo"
           >
             Redo
+          </button>
+
+          <button
+            className={styles.button}
+            type="button"
+            onClick={() => {
+              setMobilePanel(null);
+              setDialog("shortcuts");
+            }}
+            aria-label="Keyboard shortcuts"
+          >
+            Shortcuts
           </button>
 
           {isNarrow ? (
@@ -736,14 +1023,24 @@ export function PageBuilder() {
 
         <section className={styles.canvas} aria-label="Canvas">
           <div
+            ref={canvasFrameRef}
             className={styles.canvasFrame}
             data-mode={mode}
             data-bp={breakpoint}
             tabIndex={0}
-            onKeyDown={onCanvasKeyDown}
+            aria-label="Canvas editor"
+            aria-describedby={selectionDescId}
             onMouseLeave={() => dispatch({ type: "SET_HOVERED", nodeId: null })}
           >
             <div className={styles.canvasTitle}>Canvas ({mode})</div>
+            <div id={selectionDescId} className={styles.selectionBreadcrumb} aria-live="polite">
+              {selectionBreadcrumb}
+            </div>
+            {dropInvalid ? (
+              <div className={styles.dropInvalidMessage} role="status" aria-label="Invalid drop target">
+                {dropInvalid.reason}
+              </div>
+            ) : null}
             <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
               <RenderDocument
                 doc={doc}
@@ -831,6 +1128,8 @@ export function PageBuilder() {
         </div>
       ) : null}
 
+      {dialog === "shortcuts" ? <ShortcutsDialog onClose={() => setDialog(null)} /> : null}
+
       {dialog === "export" ? (
         <ExportDialog
           doc={doc}
@@ -866,7 +1165,7 @@ export function PageBuilder() {
         />
       ) : null}
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={prefersReducedMotion ? null : undefined}>
         {activeDrag ? <div className={styles.dragOverlay}>{dragOverlayLabel}</div> : null}
       </DragOverlay>
       </DndContext>
@@ -930,23 +1229,81 @@ function PaletteListItem(props: {
   );
 }
 
+function focusElement(el: HTMLElement | null) {
+  if (!el) return;
+  if (typeof document !== "undefined" && !document.contains(el)) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    el.focus();
+  }
+}
+
+function getFocusableElements(root: HTMLElement): HTMLElement[] {
+  const selectors = [
+    "a[href]",
+    "button:not([disabled])",
+    "input:not([disabled]):not([type=\"hidden\"])",
+    "select:not([disabled])",
+    "textarea:not([disabled])",
+    "[tabindex]:not([tabindex=\"-1\"])",
+    "[contenteditable=\"true\"]",
+  ];
+
+  return Array.from(root.querySelectorAll<HTMLElement>(selectors.join(","))).filter((el) => {
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    return true;
+  });
+}
+
 function Drawer(props: { title: string; side: "left" | "right"; children: React.ReactNode; onClose: () => void }) {
   const { title, side, children, onClose } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    rootRef.current?.focus();
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusElement(rootRef.current);
+    return () => focusElement(returnFocusRef.current);
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Tab") return;
+      const root = rootRef.current;
+      if (!root) return;
+
+      const focusables = getFocusableElements(root);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        focusElement(root);
+        return;
+      }
+
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (!active || active === root || !root.contains(active)) {
+        e.preventDefault();
+        focusElement(e.shiftKey ? last : first);
+        return;
+      }
+
+      if (e.shiftKey) {
+        if (active === first) {
+          e.preventDefault();
+          focusElement(last);
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          focusElement(first);
+        }
+      }
+    },
+    [rootRef],
+  );
 
   return (
     <div
@@ -964,6 +1321,7 @@ function Drawer(props: { title: string; side: "left" | "right"; children: React.
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
+        onKeyDown={onKeyDown}
       >
         <div className={styles.drawerHeader}>
           <div className={styles.drawerTitle}>{title}</div>
@@ -1012,20 +1370,51 @@ function useMediaQuery(query: string): boolean {
 function Modal(props: { title: string; children: React.ReactNode; onClose: () => void }) {
   const { title, children, onClose } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    rootRef.current?.focus();
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    focusElement(rootRef.current);
+    return () => focusElement(returnFocusRef.current);
   }, []);
 
-  useEffect(() => {
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault();
-      onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Tab") return;
+      const root = rootRef.current;
+      if (!root) return;
+
+      const focusables = getFocusableElements(root);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        focusElement(root);
+        return;
+      }
+
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+
+      if (!active || active === root || !root.contains(active)) {
+        e.preventDefault();
+        focusElement(e.shiftKey ? last : first);
+        return;
+      }
+
+      if (e.shiftKey) {
+        if (active === first) {
+          e.preventDefault();
+          focusElement(last);
+        }
+      } else {
+        if (active === last) {
+          e.preventDefault();
+          focusElement(first);
+        }
+      }
+    },
+    [rootRef],
+  );
 
   return (
     <div
@@ -1035,7 +1424,15 @@ function Modal(props: { title: string; children: React.ReactNode; onClose: () =>
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div ref={rootRef} className={styles.modal} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+      <div
+        ref={rootRef}
+        className={styles.modal}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+      >
         <div className={styles.modalHeader}>
           <div className={styles.modalTitle}>{title}</div>
           <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Close dialog">
@@ -1045,6 +1442,82 @@ function Modal(props: { title: string; children: React.ReactNode; onClose: () =>
         <div className={styles.modalBody}>{children}</div>
       </div>
     </div>
+  );
+}
+
+function ShortcutsDialog(props: { onClose: () => void }) {
+  return (
+    <Modal title="Keyboard shortcuts" onClose={props.onClose}>
+      <div className={styles.dialogSection}>
+        <div className={styles.dialogSectionTitle}>Editor</div>
+        <table className={styles.shortcutsTable}>
+          <tbody>
+            <tr>
+              <th scope="row">
+                <kbd>Delete</kbd> / <kbd>Backspace</kbd>
+              </th>
+              <td>Delete the selected block.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>D</kbd>
+              </th>
+              <td>Duplicate the selected block.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Z</kbd>
+              </th>
+              <td>Undo.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> (or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Y</kbd>)
+              </th>
+              <td>Redo.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>C</kbd>
+              </th>
+              <td>Copy the selected block.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>X</kbd>
+              </th>
+              <td>Cut the selected block.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>V</kbd>
+              </th>
+              <td>Paste into the closest valid container.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>
+              </th>
+              <td>Move the selected block up/down among siblings.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Enter</kbd>
+              </th>
+              <td>Toggle Edit/Preview mode.</td>
+            </tr>
+            <tr>
+              <th scope="row">
+                <kbd>Esc</kbd>
+              </th>
+              <td>Close dialogs/panels or select the Page root.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div className={styles.muted}>Shortcuts are suppressed while typing in inputs, textareas, or contenteditable fields.</div>
+      </div>
+    </Modal>
   );
 }
 
@@ -2054,6 +2527,43 @@ function canAcceptChild(doc: Document, parentId: NodeId, childType: NodeType): b
     return parent.children.length < def.constraints.maxChildren;
   }
   return true;
+}
+
+function describeNodeForA11y(doc: Document, nodeId: NodeId): string {
+  const node = doc.nodes[nodeId];
+  if (!node) return "Missing node";
+
+  let label = blockRegistry[node.type]?.label ?? node.type;
+
+  if (node.type === "column" && node.parentId) {
+    const parent = doc.nodes[node.parentId];
+    if (parent?.type === "columns") {
+      const idx = parent.children.indexOf(node.id);
+      if (idx >= 0) label = `${label} ${idx + 1}`;
+    }
+  }
+
+  return label;
+}
+
+function buildSelectionBreadcrumb(doc: Document, selectedId: NodeId | null): string {
+  const root = doc.nodes[doc.rootId];
+  if (!root) return "Selection: Missing Page root";
+
+  const startId = selectedId && doc.nodes[selectedId] ? selectedId : doc.rootId;
+  const visited = new Set<NodeId>();
+  const path: NodeId[] = [];
+
+  let cursor: NodeId | null = startId;
+  while (cursor) {
+    if (visited.has(cursor)) break;
+    visited.add(cursor);
+    path.push(cursor);
+    cursor = doc.nodes[cursor]?.parentId ?? null;
+  }
+
+  path.reverse();
+  return `Selection: ${path.map((id) => describeNodeForA11y(doc, id)).join(" › ")}`;
 }
 
 function sanitizeFilename(input: string): string {
