@@ -30,13 +30,13 @@ import {
   getInheritedStyleValue,
   getSpacingTokens,
   isStyleKeyOverridden,
-  isProbablySafeUrl,
   remapIds,
   validateDocument,
 } from "@/editor-core";
 import type { DragPayload, DropIntent } from "@/dnd";
 import { computeDropIntent, paletteDragId, parseContainerDropId, parseNodeDragId, parsePaletteDragId } from "@/dnd";
 import { RenderDocument, themeToCssVars } from "@/renderer";
+import { collectHtmlExportWarnings, exportDocumentToHtml, exportDocumentToJson } from "@/export";
 import type { DispatchOptions, EditorAction, Mode } from "@/store";
 import { editorStore, useEditorStore } from "@/store";
 import type { AutosaveController, ParseDocumentErrorCode, PersistenceStatus } from "@/persistence";
@@ -1051,20 +1051,21 @@ function Modal(props: { title: string; children: React.ReactNode; onClose: () =>
 function ExportDialog(props: { doc: Document; breakpoint: Breakpoint; onClose: () => void; onToast: (k: "info" | "error", m: string) => void }) {
   const [mode, setMode] = useState<"full" | "snippet">("full");
 
-  const warnings = useMemo(() => collectExportWarnings(props.doc), [props.doc]);
+  const warnings = useMemo(() => collectHtmlExportWarnings(props.doc), [props.doc]);
 
   const onDownloadJson = () => {
     const filename = `${sanitizeFilename(props.doc.meta.title || "page")}.pagebuilder.json`;
-    downloadText(filename, JSON.stringify(props.doc, null, 2), "application/json");
+    const { json } = exportDocumentToJson(props.doc);
+    downloadText(filename, json, "application/json");
     props.onToast("info", "Exported JSON.");
   };
 
   const onDownloadHtml = () => {
     const filename = `${sanitizeFilename(props.doc.meta.title || "page")}.${props.breakpoint}.html`;
-    void exportToHtml(props.doc, { breakpoint: props.breakpoint, mode })
-      .then((html) => {
-        downloadText(filename, html, "text/html");
-        props.onToast("info", "Exported HTML.");
+    void exportDocumentToHtml(props.doc, { breakpoint: props.breakpoint, mode })
+      .then((res) => {
+        downloadText(filename, res.html, "text/html");
+        props.onToast("info", res.warnings.length > 0 ? `Exported HTML with ${res.warnings.length} warning(s).` : "Exported HTML.");
       })
       .catch((e) => {
         const msg = e instanceof Error ? e.message : "Failed to export HTML.";
@@ -2081,76 +2082,8 @@ function downloadText(filename: string, content: string, mime: string) {
   URL.revokeObjectURL(url);
 }
 
-async function exportToHtml(doc: Document, opts: { breakpoint: Breakpoint; mode: "full" | "snippet" }): Promise<string> {
-  const { renderToStaticMarkup } = await import("react-dom/server");
-  const body = renderToStaticMarkup(<RenderDocument doc={doc} mode="export" breakpoint={opts.breakpoint} />);
-  if (opts.mode === "snippet") return body;
 
-  const root = doc.nodes[doc.rootId];
-  const lang = root && root.type === "page" ? (root.props as { lang?: string }).lang : "en";
-  const safeLang = isProbablyValidLang(lang ?? "en") ? lang ?? "en" : "en";
-  const title = escapeHtml(doc.meta.title || "Page");
 
-  return [
-    "<!doctype html>",
-    `<html lang="${escapeAttr(safeLang)}">`,
-    "<head>",
-    '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    `<title>${title}</title>`,
-    "</head>",
-    "<body>",
-    body,
-    "</body>",
-    "</html>",
-  ].join("");
-}
-
-function collectExportWarnings(doc: Document): string[] {
-  const hiddenCount = Object.values(doc.nodes).filter((n) => Boolean(n.constraints?.hidden)).length;
-
-  const unsafe: Array<{ nodeId: NodeId; kind: string; value: string }> = [];
-  for (const n of Object.values(doc.nodes)) {
-    if (n.type === "image") {
-      const src = (n.props as { src: string }).src;
-      const linkTo = (n.props as { linkTo?: string }).linkTo;
-      if (src.trim() && !isProbablySafeUrl(src)) unsafe.push({ nodeId: n.id, kind: "image.src", value: src });
-      if (linkTo && linkTo.trim() && !isProbablySafeUrl(linkTo)) unsafe.push({ nodeId: n.id, kind: "image.linkTo", value: linkTo });
-    }
-    if (n.type === "button") {
-      const href = (n.props as { href: string }).href;
-      if (href.trim() && !isProbablySafeUrl(href)) unsafe.push({ nodeId: n.id, kind: "button.href", value: href });
-    }
-  }
-
-  const out: string[] = [];
-  if (hiddenCount > 0) out.push(`${hiddenCount} hidden node(s) are excluded from preview/export.`);
-  if (unsafe.length > 0) out.push(`Unsafe URLs will be removed in export (${unsafe.length}).`);
-  if (unsafe.length > 0) {
-    out.push(
-      ...unsafe.slice(0, 5).map((u) => `- ${u.kind} on ${u.nodeId}: ${u.value}`),
-    );
-    if (unsafe.length > 5) out.push(`- ...and ${unsafe.length - 5} more`);
-  }
-  return out;
-}
-
-function escapeHtml(input: string): string {
-  return input
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function escapeAttr(input: string): string {
-  return escapeHtml(input);
-}
-
-function isProbablyValidLang(input: string): boolean {
-  return /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(input.trim());
-}
 
 type DropIndicatorGeometry = {
   kind: "line" | "placeholder";
