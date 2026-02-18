@@ -156,4 +156,34 @@ describe("PageBuilder integration", () => {
     expect(root.children.length).toBe(2);
     expect(editorStore.getState().doc.nodes.section_2?.type).toBe("section");
   });
+
+  test("importing unsafe URLs blocks navigation and produces HTML export warnings", async () => {
+    const imported = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const idFactory = createDeterministicIdFactory({ startAt: { button: 10 } });
+    const unsafeButton = createNode("button", {
+      idFactory,
+      parentId: "column_1",
+      props: { label: "Unsafe nav", href: "javascript:alert(1)", variant: "primary" },
+    });
+    imported.nodes[unsafeButton.id] = unsafeButton;
+    imported.nodes.column_1.children = [unsafeButton.id];
+
+    render(<PageBuilder />);
+    fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
+
+    const textarea = screen.getByPlaceholderText(/Paste a document JSON/i);
+    fireEvent.change(textarea, { target: { value: JSON.stringify(imported, null, 2) } });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Replace" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Import JSON" })).not.toBeInTheDocument());
+
+    const canvas = within(screen.getByRole("region", { name: "Canvas" }));
+    expect(canvas.getByRole("button", { name: "Unsafe nav" })).toBeInTheDocument();
+    expect(canvas.queryByRole("link", { name: "Unsafe nav" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(screen.getByText(/Unsafe URLs are removed from HTML export/i)).toBeInTheDocument();
+  });
 });

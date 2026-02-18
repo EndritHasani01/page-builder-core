@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { createDefaultDocument } from "@/editor-core";
 
-import { parseDocumentJsonText } from "./parseDocument";
+import { MAX_DOCUMENT_JSON_CHARS, MAX_DOCUMENT_NODES, parseDocumentJsonText } from "./parseDocument";
 
 describe("parseDocumentJsonText", () => {
   test("returns INVALID_JSON for malformed JSON", () => {
@@ -59,5 +59,33 @@ describe("parseDocumentJsonText", () => {
       expect(res.code).toBe("UNSUPPORTED_VERSION");
     }
   });
-});
 
+  test("returns DOCUMENT_TOO_LARGE when JSON text exceeds the max size", () => {
+    const tooLarge = " ".repeat(MAX_DOCUMENT_JSON_CHARS + 1);
+    const res = parseDocumentJsonText(tooLarge);
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("DOCUMENT_TOO_LARGE");
+      expect(res.error.toLowerCase()).toContain("too large");
+    }
+  });
+
+  test("returns DOCUMENT_TOO_LARGE when nodes map exceeds the max node count", () => {
+    const nodes: Record<string, null> = {};
+    for (let i = 0; i < MAX_DOCUMENT_NODES + 1; i++) {
+      nodes[`n_${i}`] = null;
+    }
+
+    const raw = {
+      meta: { schemaVersion: "1.0.0" },
+      nodes,
+    };
+
+    const res = parseDocumentJsonText(JSON.stringify(raw));
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.code).toBe("DOCUMENT_TOO_LARGE");
+      expect(res.error.toLowerCase()).toContain("nodes");
+    }
+  });
+});

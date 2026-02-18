@@ -8,22 +8,6 @@ type UnsafeUrl = {
   value: string;
 };
 
-function hasControlOrWhitespace(input: string): boolean {
-  for (let i = 0; i < input.length; i++) {
-    const code = input.charCodeAt(i);
-    if (code < 0x20 || code === 0x7f) return true;
-    if (input[i].trim() === "") return true;
-  }
-  return false;
-}
-
-function isSafeUrlForExport(input: string): boolean {
-  const trimmed = input.trim();
-  if (!trimmed) return false;
-  if (hasControlOrWhitespace(trimmed)) return false;
-  return isProbablySafeUrl(trimmed);
-}
-
 function listUnsafeUrls(doc: Document): UnsafeUrl[] {
   const unsafe: UnsafeUrl[] = [];
   for (const n of Object.values(doc.nodes)) {
@@ -31,18 +15,18 @@ function listUnsafeUrls(doc: Document): UnsafeUrl[] {
       const src = (n.props as { src?: unknown }).src;
       const linkTo = (n.props as { linkTo?: unknown }).linkTo;
 
-      if (typeof src === "string" && src.trim() && !isSafeUrlForExport(src)) {
+      if (typeof src === "string" && src.trim() && !isProbablySafeUrl(src)) {
         unsafe.push({ nodeId: n.id, kind: "image.src", value: src });
       }
 
-      if (typeof linkTo === "string" && linkTo.trim() && !isSafeUrlForExport(linkTo)) {
+      if (typeof linkTo === "string" && linkTo.trim() && !isProbablySafeUrl(linkTo)) {
         unsafe.push({ nodeId: n.id, kind: "image.linkTo", value: linkTo });
       }
     }
 
     if (n.type === "button") {
       const href = (n.props as { href?: unknown }).href;
-      if (typeof href === "string" && href.trim() && !isSafeUrlForExport(href)) {
+      if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
         unsafe.push({ nodeId: n.id, kind: "button.href", value: href });
       }
     }
