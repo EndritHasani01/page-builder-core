@@ -32,6 +32,7 @@ export type DocCommand =
   | { type: "MOVE_NODE"; nodeId: NodeId; parentId: NodeId; index: number }
   | { type: "DELETE_NODE"; nodeId: NodeId }
   | { type: "DUPLICATE_NODE"; nodeId: NodeId; parentId?: NodeId; index?: number }
+  | { type: "UPDATE_META"; patch: { title?: string } }
   | { type: "UPDATE_PROPS"; nodeId: NodeId; patch: Record<string, unknown> }
   | { type: "UPDATE_STYLE"; nodeId: NodeId; breakpoint: Breakpoint; patch: Partial<StyleProps> }
   | { type: "RESET_STYLE_BREAKPOINT"; nodeId: NodeId; breakpoint: Breakpoint }
@@ -588,6 +589,24 @@ function applyDuplicateNode(
   });
 }
 
+function applyUpdateMeta(doc: DraftDoc, ctx: ApplyCtx, cmd: Extract<DocCommand, { type: "UPDATE_META" }>) {
+  if (!cmd.patch || typeof cmd.patch !== "object") {
+    pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Meta patch must be an object." });
+    return;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(cmd.patch, "title")) {
+    const raw = cmd.patch.title;
+    if (raw !== undefined && typeof raw !== "string") {
+      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Document title must be a string." });
+      return;
+    }
+    if (typeof raw === "string") {
+      doc.meta.title = raw;
+    }
+  }
+}
+
 function applyUpdateProps(
   doc: DraftDoc,
   ctx: ApplyCtx,
@@ -728,6 +747,9 @@ export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: Appl
       return;
     case "DUPLICATE_NODE":
       applyDuplicateNode(doc, ctx, cmd);
+      return;
+    case "UPDATE_META":
+      applyUpdateMeta(doc, ctx, cmd);
       return;
     case "UPDATE_PROPS":
       applyUpdateProps(doc, ctx, cmd);

@@ -130,6 +130,13 @@ describe("applyCommand", () => {
     expect(res2.doc.nodes.column_1.style?.md?.opacity).toBe(0.8);
   });
 
+  test("UPDATE_META updates the document meta title", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, { type: "UPDATE_META", patch: { title: "Renamed" } });
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.title).toBe("Renamed");
+  });
+
   test("RESET_STYLE_BREAKPOINT clears the breakpoint override bucket", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
 

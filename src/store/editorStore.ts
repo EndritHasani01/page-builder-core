@@ -122,6 +122,8 @@ function defaultHistoryLabel(action: DocCommand): string {
       return "Delete";
     case "DUPLICATE_NODE":
       return "Duplicate";
+    case "UPDATE_META":
+      return "Document";
     case "UPDATE_PROPS":
       return "Edit";
     case "UPDATE_STYLE":
@@ -271,6 +273,7 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
             case "DELETE_NODE":
               partial.selectedId = ensureValidSelection(nextDoc, preDeleteSelection);
               break;
+            case "UPDATE_META":
             case "UPDATE_PROPS":
             case "UPDATE_STYLE":
             case "SET_COLUMNS":

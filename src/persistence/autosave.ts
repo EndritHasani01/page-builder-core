@@ -1,7 +1,8 @@
 import type { Document } from "@/editor-core";
 import type { EditorStore } from "@/store";
 
-import { saveToLocalStorage, type SaveResult } from "./localStorage";
+import type { SaveResult } from "./localStorage";
+import { saveWorkspaceDocument } from "./workspace";
 
 export type PersistenceStatus =
   | { state: "idle" }
@@ -37,7 +38,7 @@ export function startAutosave(
     if (!shouldSave(doc)) return;
     onStatus?.({ state: "saving" });
 
-    const res: SaveResult = saveToLocalStorage(docId, doc);
+    const res: SaveResult = saveWorkspaceDocument(docId, doc);
     if (!res.ok) {
       blocked = Boolean(res.quota);
       onStatus?.({ state: "error", error: res.error, quota: res.quota });

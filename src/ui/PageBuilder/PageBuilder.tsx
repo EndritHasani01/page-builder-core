@@ -40,13 +40,19 @@ import { RenderDocument, themeToCssVars } from "@/renderer";
 import { collectHtmlExportWarnings, exportDocumentToHtml, exportDocumentToJson } from "@/export";
 import type { DispatchOptions, EditorAction, Mode } from "@/store";
 import { editorStore, useEditorStore } from "@/store";
-import type { AutosaveController, ParseDocumentErrorCode, PersistenceStatus } from "@/persistence";
+import type { AutosaveController, ParseDocumentErrorCode, PersistenceStatus, WorkspaceDocMeta } from "@/persistence";
 import {
   clearLocalStorage,
+  createWorkspaceDocument,
+  deleteWorkspaceDocument,
+  duplicateWorkspaceDocument,
+  getActiveWorkspaceDocId,
+  listWorkspaceDocuments,
   loadBackupFromLocalStorage,
-  loadFromLocalStorage,
+  loadWorkspaceDocument,
   parseDocumentJsonText,
-  saveToLocalStorage,
+  saveWorkspaceDocument,
+  setActiveWorkspaceDocId,
   startAutosave,
 } from "@/persistence";
 import { getShortcutAction, isEditableTarget } from "@/ui/keyboard/shortcuts";
@@ -124,7 +130,22 @@ export function PageBuilder() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const docId = "default";
+  const [workspaceDocs, setWorkspaceDocs] = useState<WorkspaceDocMeta[]>(() => listWorkspaceDocuments());
+  const [docId, setDocId] = useState<string>(() => {
+    const active = getActiveWorkspaceDocId();
+    if (active) return active;
+    const docs = listWorkspaceDocuments();
+    if (docs.length > 0) return docs[0]!.id;
+    return "default";
+  });
+
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+
+  const refreshWorkspaceDocs = useCallback(() => {
+    setWorkspaceDocs(listWorkspaceDocuments());
+  }, []);
+
   const isNarrow = useMediaQuery("(max-width: 1024px)");
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const selectionDescId = useId();
@@ -403,59 +424,105 @@ export function PageBuilder() {
     [],
   );
 
-  useEffect(() => {
-    const loaded = loadFromLocalStorage(docId);
-    if (!loaded.ok) {
-      if (loaded.code === "NOT_FOUND") {
-        window.setTimeout(() => setAutosaveEnabled(true), 0);
-        return;
-      }
+  const stopAutosaveController = useCallback(() => {
+    const ctrl = autosaveRef.current;
+    if (ctrl) ctrl.stop();
+    autosaveRef.current = null;
+  }, []);
 
-      const info: RecoveryInfo = {
-        code: loaded.code,
-        error: loaded.error,
-        rawPrimary: loaded.rawPrimary,
-        rawBackup: loaded.rawBackup,
-      };
-
-      window.setTimeout(() => {
-        setAutosaveEnabled(false);
-        setRecovery(info);
-        setRecoveryOpen(true);
-      }, 0);
-      window.setTimeout(() => pushToast("error", `Failed to load saved document. ${loaded.error}`), 0);
-      return;
-    }
-
-    replaceDocument(loaded.doc);
-    window.setTimeout(() => {
+  const activateLoadedDocument = useCallback(
+    (nextDocId: string, nextDoc: Document) => {
+      stopAutosaveController();
+      replaceDocument(nextDoc);
+      setDocId(nextDocId);
+      setActiveWorkspaceDocId(nextDocId);
       setRecovery(null);
       setRecoveryOpen(false);
       setAutosaveEnabled(true);
       setPersistence({ state: "saved", at: Date.now() });
-    }, 0);
+      refreshWorkspaceDocs();
+    },
+    [refreshWorkspaceDocs, replaceDocument, stopAutosaveController],
+  );
 
-    if (loaded.recoveredFromBackup) {
-      void window.setTimeout(() => {
-        const res = saveToLocalStorage(docId, loaded.doc, { rotateBackup: false });
-        if (!res.ok) {
-          setPersistence({ state: "error", error: res.error, quota: res.quota });
-          pushToast("error", res.error);
+  const activateDocId = useCallback(
+    (nextDocId: string) => {
+      const trimmed = nextDocId.trim();
+      if (!trimmed) return;
+
+      stopAutosaveController();
+
+      const loaded = loadWorkspaceDocument(trimmed);
+      if (!loaded.ok) {
+        if (loaded.code === "NOT_FOUND") {
+          const created = createWorkspaceDocument({ docId: trimmed });
+          if (!created.ok) {
+            setPersistence({ state: "error", error: created.error, quota: created.quota });
+            pushToast("error", created.error);
+            return;
+          }
+
+          activateLoadedDocument(created.docId, created.doc);
+          pushToast("info", "Created a new document.");
+          return;
         }
-      }, 0);
-      window.setTimeout(() => pushToast("info", "Recovered document from LocalStorage backup."), 0);
-    }
-    if (loaded.migratedFrom) {
-      void window.setTimeout(() => {
-        const res = saveToLocalStorage(docId, loaded.doc);
-        if (!res.ok) {
-          setPersistence({ state: "error", error: res.error, quota: res.quota });
-          pushToast("error", res.error);
-        }
-      }, 0);
-      window.setTimeout(() => pushToast("info", `Migrated document from schema ${loaded.migratedFrom}.`), 0);
-    }
-  }, [docId, pushToast, replaceDocument]);
+
+        const info: RecoveryInfo = {
+          code: loaded.code,
+          error: loaded.error,
+          rawPrimary: loaded.rawPrimary,
+          rawBackup: loaded.rawBackup,
+        };
+
+        // Keep a safe default document open while the selected docId is in recovery.
+        replaceDocument(createDefaultDocument());
+        setDocId(trimmed);
+        setActiveWorkspaceDocId(trimmed);
+        setAutosaveEnabled(false);
+        setRecovery(info);
+        setRecoveryOpen(true);
+        refreshWorkspaceDocs();
+        pushToast("error", `Failed to load saved document. ${loaded.error}`);
+        return;
+      }
+
+      activateLoadedDocument(trimmed, loaded.doc);
+
+      if (loaded.recoveredFromBackup) {
+        void window.setTimeout(() => {
+          const res = saveWorkspaceDocument(trimmed, loaded.doc, { rotateBackup: false });
+          if (!res.ok) {
+            setPersistence({ state: "error", error: res.error, quota: res.quota });
+            pushToast("error", res.error);
+          }
+        }, 0);
+        window.setTimeout(() => pushToast("info", "Recovered document from LocalStorage backup."), 0);
+      }
+
+      if (loaded.migratedFrom) {
+        void window.setTimeout(() => {
+          const res = saveWorkspaceDocument(trimmed, loaded.doc);
+          if (!res.ok) {
+            setPersistence({ state: "error", error: res.error, quota: res.quota });
+            pushToast("error", res.error);
+          }
+        }, 0);
+        window.setTimeout(() => pushToast("info", `Migrated document from schema ${loaded.migratedFrom}.`), 0);
+      }
+    },
+    [
+      activateLoadedDocument,
+      pushToast,
+      refreshWorkspaceDocs,
+      replaceDocument,
+      stopAutosaveController,
+    ],
+  );
+
+  const initialDocIdRef = useRef(docId);
+  useEffect(() => {
+    activateDocId(initialDocIdRef.current);
+  }, [activateDocId]);
 
   useEffect(() => {
     const ctrl = startAutosave(editorStore, docId, { onStatus: setPersistence, shouldSave: () => autosaveEnabled });
@@ -474,6 +541,181 @@ export function PageBuilder() {
     window.setTimeout(() => pushToast("error", persistence.error), 0);
   }, [persistence, pushToast]);
 
+  useEffect(() => {
+    if (persistence.state !== "saved") return;
+    refreshWorkspaceDocs();
+  }, [persistence.state, refreshWorkspaceDocs]);
+
+  const confirmProceedIfQuotaBlocked = useCallback(
+    (actionLabel: string): boolean => {
+      if (persistence.state !== "error" || !persistence.quota) return true;
+      return window.confirm(
+        `LocalStorage is full and autosave is paused.\n\n${actionLabel} may discard unsaved changes in the current document.\n\nExport JSON, then clear saved data to resume saving.\n\nContinue?`,
+      );
+    },
+    [persistence],
+  );
+
+  const flushAutosaveIfEnabled = useCallback(() => {
+    const ctrl = autosaveRef.current;
+    if (!ctrl) return;
+    if (!autosaveEnabled) return;
+    if (ctrl.isQuotaBlocked()) return;
+    ctrl.flush();
+  }, [autosaveEnabled]);
+
+  const onSwitchDocument = useCallback(
+    (nextDocId: string) => {
+      const trimmed = nextDocId.trim();
+      if (!trimmed) return;
+      if (trimmed === docId) return;
+      if (activeTxn) return;
+      if (!confirmProceedIfQuotaBlocked("Switching documents")) return;
+
+      flushAutosaveIfEnabled();
+      setDialog(null);
+      setMobilePanel(null);
+      activateDocId(trimmed);
+    },
+    [activeTxn, activateDocId, confirmProceedIfQuotaBlocked, docId, flushAutosaveIfEnabled],
+  );
+
+  const onCreateNewDocument = useCallback(() => {
+    if (activeTxn) return;
+    if (!confirmProceedIfQuotaBlocked("Creating a new document")) return;
+
+    flushAutosaveIfEnabled();
+    setDialog(null);
+    setMobilePanel(null);
+
+    const created = createWorkspaceDocument();
+    if (!created.ok) {
+      setPersistence({ state: "error", error: created.error, quota: created.quota });
+      pushToast("error", created.error);
+      return;
+    }
+
+    activateLoadedDocument(created.docId, created.doc);
+    pushToast("info", "Created a new document.");
+  }, [
+    activeTxn,
+    activateLoadedDocument,
+    confirmProceedIfQuotaBlocked,
+    flushAutosaveIfEnabled,
+    pushToast,
+  ]);
+
+  const onDuplicateCurrentDocument = useCallback(() => {
+    if (activeTxn) return;
+    if (!confirmProceedIfQuotaBlocked("Duplicating the current document")) return;
+
+    flushAutosaveIfEnabled();
+    setDialog(null);
+    setMobilePanel(null);
+
+    const duplicated = duplicateWorkspaceDocument(doc);
+    if (!duplicated.ok) {
+      setPersistence({ state: "error", error: duplicated.error, quota: duplicated.quota });
+      pushToast("error", duplicated.error);
+      return;
+    }
+
+    activateLoadedDocument(duplicated.docId, duplicated.doc);
+    pushToast("info", "Duplicated document.");
+  }, [
+    activeTxn,
+    activateLoadedDocument,
+    confirmProceedIfQuotaBlocked,
+    doc,
+    flushAutosaveIfEnabled,
+    pushToast,
+  ]);
+
+  const onDeleteCurrentDocument = useCallback(() => {
+    if (activeTxn) return;
+
+    const title = doc.meta.title?.trim() ? doc.meta.title.trim() : docId;
+    const ok = window.confirm(`Delete "${title}"?\n\nThis removes the saved snapshot and backup from LocalStorage.`);
+    if (!ok) return;
+
+    stopAutosaveController();
+
+    const deleted = deleteWorkspaceDocument(docId);
+    if (!deleted.ok) {
+      pushToast("error", deleted.error);
+      return;
+    }
+
+    refreshWorkspaceDocs();
+    const remaining = listWorkspaceDocuments();
+
+    if (remaining.length > 0) {
+      activateDocId(remaining[0]!.id);
+      pushToast("info", "Deleted document.");
+      return;
+    }
+
+    const created = createWorkspaceDocument({ docId: "default" });
+    if (!created.ok) {
+      setPersistence({ state: "error", error: created.error, quota: created.quota });
+      pushToast("error", created.error);
+      return;
+    }
+
+    activateLoadedDocument(created.docId, created.doc);
+    pushToast("info", "Deleted document.");
+  }, [
+    activeTxn,
+    activateDocId,
+    activateLoadedDocument,
+    doc,
+    docId,
+    pushToast,
+    refreshWorkspaceDocs,
+    stopAutosaveController,
+  ]);
+
+  const onOpenRenameDialog = useCallback(() => {
+    setRenameValue(doc.meta.title ?? "");
+    setRenameOpen(true);
+  }, [doc.meta.title]);
+
+  const onConfirmRename = useCallback(() => {
+    const title = renameValue.trim();
+    if (!title) {
+      pushToast("error", "Document title cannot be empty.");
+      return;
+    }
+
+    dispatch({ type: "UPDATE_META", patch: { title } }, { historyLabel: "Rename" });
+    setRenameOpen(false);
+
+    // Persist immediately so export filenames and workspace metadata stay in sync.
+    const ctrl = autosaveRef.current;
+    if (ctrl && autosaveEnabled && !ctrl.isQuotaBlocked()) {
+      ctrl.flush();
+    } else {
+      setPersistence({ state: "saving" });
+      const res = saveWorkspaceDocument(docId, editorStore.getState().doc);
+      if (!res.ok) {
+        setPersistence({ state: "error", error: res.error, quota: res.quota });
+        pushToast("error", res.error);
+        return;
+      }
+      setPersistence({ state: "saved", at: Date.now() });
+    }
+
+    refreshWorkspaceDocs();
+    pushToast("info", "Renamed document.");
+  }, [
+    autosaveEnabled,
+    dispatch,
+    docId,
+    pushToast,
+    refreshWorkspaceDocs,
+    renameValue,
+  ]);
+
   const onClearSavedAfterQuota = useCallback(
     async (targetDocId: string) => {
       const ok = window.confirm(
@@ -491,7 +733,7 @@ export function PageBuilder() {
       setAutosaveEnabled(true);
 
       setPersistence({ state: "saving" });
-      const res = saveToLocalStorage(targetDocId, doc, { rotateBackup: false });
+      const res = saveWorkspaceDocument(targetDocId, doc, { rotateBackup: false });
       if (!res.ok) {
         setPersistence({ state: "error", error: res.error, quota: res.quota });
         pushToast("error", res.error);
@@ -499,9 +741,10 @@ export function PageBuilder() {
       }
 
       setPersistence({ state: "saved", at: Date.now() });
+      refreshWorkspaceDocs();
       pushToast("info", "Cleared saved snapshots and resumed saving.");
     },
-    [doc, pushToast],
+    [doc, pushToast, refreshWorkspaceDocs],
   );
 
   const onConfirmReset = useCallback(() => {
@@ -520,7 +763,7 @@ export function PageBuilder() {
     autosaveRef.current?.resetQuotaBlock();
 
     setPersistence({ state: "saving" });
-    const res = saveToLocalStorage(docId, next, { rotateBackup: false });
+    const res = saveWorkspaceDocument(docId, next, { rotateBackup: false });
     if (!res.ok) {
       setPersistence({ state: "error", error: res.error, quota: res.quota });
       pushToast("error", res.error);
@@ -528,8 +771,9 @@ export function PageBuilder() {
     }
 
     setPersistence({ state: "saved", at: Date.now() });
+    refreshWorkspaceDocs();
     pushToast("info", "Reset document.");
-  }, [docId, pushToast, replaceDocument]);
+  }, [docId, pushToast, refreshWorkspaceDocs, replaceDocument]);
 
   const onOverwriteSavedAndEnableAutosave = useCallback(() => {
     const ok = window.confirm(
@@ -549,7 +793,7 @@ export function PageBuilder() {
     autosaveRef.current?.resetQuotaBlock();
 
     setPersistence({ state: "saving" });
-    const res = saveToLocalStorage(docId, doc, { rotateBackup: false });
+    const res = saveWorkspaceDocument(docId, doc, { rotateBackup: false });
     if (!res.ok) {
       setPersistence({ state: "error", error: res.error, quota: res.quota });
       pushToast("error", res.error);
@@ -557,8 +801,9 @@ export function PageBuilder() {
     }
 
     setPersistence({ state: "saved", at: Date.now() });
+    refreshWorkspaceDocs();
     pushToast("info", "Saving re-enabled.");
-  }, [doc, docId, pushToast]);
+  }, [doc, docId, pushToast, refreshWorkspaceDocs]);
 
   const onLoadBackupForRecovery = useCallback(() => {
     const loaded = loadBackupFromLocalStorage(docId);
@@ -824,6 +1069,60 @@ export function PageBuilder() {
           <h1 className={styles.brand}>Page Builder</h1>
 
           <div className={styles.controls}>
+          <label className={styles.control}>
+            <span className={styles.controlLabel}>Document</span>
+            <select
+              value={docId}
+              onChange={(e) => onSwitchDocument(e.target.value)}
+              aria-label="Document"
+              disabled={Boolean(activeTxn)}
+            >
+              {workspaceDocs.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {(d.title && d.title.trim()) ? d.title.trim() : d.id}
+                </option>
+              ))}
+              {workspaceDocs.some((d) => d.id === docId) ? null : <option value={docId}>{docId}</option>}
+            </select>
+          </label>
+
+          <button
+            className={styles.button}
+            type="button"
+            onClick={onCreateNewDocument}
+            disabled={Boolean(activeTxn)}
+            aria-label="New document"
+          >
+            New
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={onOpenRenameDialog}
+            disabled={Boolean(activeTxn) || !autosaveEnabled || Boolean(recovery)}
+            aria-label="Rename document"
+          >
+            Rename
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={onDuplicateCurrentDocument}
+            disabled={Boolean(activeTxn) || Boolean(recovery)}
+            aria-label="Duplicate document"
+          >
+            Duplicate
+          </button>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={onDeleteCurrentDocument}
+            disabled={Boolean(activeTxn) || Boolean(recovery)}
+            aria-label="Delete document"
+          >
+            Delete
+          </button>
+
           <label className={styles.control}>
             <span className={styles.controlLabel}>Mode</span>
             <select
@@ -1153,6 +1452,31 @@ export function PageBuilder() {
       ) : null}
 
       {resetOpen ? <ResetDialog onClose={() => setResetOpen(false)} onConfirm={onConfirmReset} /> : null}
+
+      {renameOpen ? (
+        <Modal title="Rename document" onClose={() => setRenameOpen(false)}>
+          <div className={styles.dialogSection}>
+            <label className={styles.control}>
+              <span className={styles.controlLabel}>Title</span>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="Document title"
+                autoFocus
+              />
+            </label>
+            <div className={styles.dialogActions}>
+              <button type="button" className={styles.button} onClick={onConfirmRename}>
+                Rename
+              </button>
+              <button type="button" className={styles.button} onClick={() => setRenameOpen(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {recoveryOpen && recovery ? (
         <RecoveryDialog
@@ -1496,7 +1820,7 @@ function ShortcutsDialog(props: { onClose: () => void }) {
             </tr>
             <tr>
               <th scope="row">
-                <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>
+                <kbd>Alt</kbd>+<kbd>ArrowUp</kbd>/<kbd>ArrowDown</kbd>
               </th>
               <td>Move the selected block up/down among siblings.</td>
             </tr>
@@ -2563,7 +2887,7 @@ function buildSelectionBreadcrumb(doc: Document, selectedId: NodeId | null): str
   }
 
   path.reverse();
-  return `Selection: ${path.map((id) => describeNodeForA11y(doc, id)).join(" › ")}`;
+  return `Selection: ${path.map((id) => describeNodeForA11y(doc, id)).join(" > ")}`;
 }
 
 function sanitizeFilename(input: string): string {
