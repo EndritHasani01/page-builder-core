@@ -56,3 +56,12 @@ export { DocumentMigrationError, migrateToLatest } from "./migrate";
 
 export { isProbablySafeUrl, isValidCssLengthOrVar } from "./validationUtils";
 
+export type { DocCommand, ApplyDocCommandResult } from "./commands";
+export {
+  applyCommand,
+  applyDocCommandToDraft,
+  computeNextSelectionAfterDelete,
+  findDefaultPasteTarget,
+} from "./commands";
+
+export { collectSubtreeIds, getChildIndex, getNode, getParent, wouldCreateCycle } from "./graph";
