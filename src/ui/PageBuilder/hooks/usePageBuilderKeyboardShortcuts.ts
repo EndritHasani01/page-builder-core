@@ -39,7 +39,19 @@ export function usePageBuilderKeyboardShortcuts(args: Args): void {
 
       const isDialogOpen = latest.dialog !== null || latest.mobilePanel !== null || latest.resetOpen || latest.recoveryOpen;
 
-      if (action !== "ESCAPE" && isEditableTarget(e.target)) return;
+      const editableTarget = isEditableTarget(e.target);
+      if (editableTarget) {
+        const el = e.target as HTMLElement | null;
+        const contentEditableAttr = el?.getAttribute("contenteditable");
+        const isContentEditable =
+          Boolean(el?.isContentEditable) || (contentEditableAttr !== null && contentEditableAttr?.toLowerCase() !== "false");
+
+        // While inline editing (contentEditable), Escape should be handled by the editor itself (cancel) rather than
+        // by the global handler (clear selection).
+        if (action === "ESCAPE" && isContentEditable) return;
+
+        if (action !== "ESCAPE") return;
+      }
       if (isDialogOpen && action !== "ESCAPE") return;
 
       const state = editorStore.getState();
@@ -170,4 +182,3 @@ export function usePageBuilderKeyboardShortcuts(args: Args): void {
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, []);
 }
-

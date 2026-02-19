@@ -1,5 +1,5 @@
 import type { MouseEvent, RefObject } from "react";
-import { useCallback, useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 
 import type { NodeId } from "@/editor-core";
 import { RenderDocument } from "@/renderer";
@@ -35,6 +35,8 @@ export function PageBuilderCanvas(props: {
   const renderMode = isPreview ? "preview" : "editor";
   const selectionBreadcrumb = useMemo(() => buildSelectionBreadcrumb(doc, selectedId), [doc, selectedId]);
 
+  const [inlineTextEditingId, setInlineTextEditingId] = useState<NodeId | null>(null);
+
   const onSelect = useCallback(
     (nodeId: NodeId) => {
       dispatch({ type: "SET_SELECTED", nodeId });
@@ -61,6 +63,36 @@ export function PageBuilderCanvas(props: {
   );
 
   const dndEnabled = !isPreview && !activeTxn;
+
+  const onStartInlineTextEdit = useCallback(
+    (nodeId: NodeId) => {
+      if (isPreview) return;
+      dispatch({ type: "SET_SELECTED", nodeId });
+      setInlineTextEditingId(nodeId);
+    },
+    [dispatch, isPreview],
+  );
+
+  const onCommitInlineTextEdit = useCallback(
+    (nodeId: NodeId, nextText: string) => {
+      if (isPreview) return;
+      setInlineTextEditingId(null);
+      dispatch(
+        { type: "UPDATE_PROPS", nodeId, patch: { text: nextText } },
+        { historyLabel: "Edit", coalesceKey: `props:${nodeId}:text:inline` },
+      );
+      focusCanvasFrame();
+    },
+    [dispatch, focusCanvasFrame, isPreview],
+  );
+
+  const onCancelInlineTextEdit = useCallback(
+    () => {
+      setInlineTextEditingId(null);
+      focusCanvasFrame();
+    },
+    [focusCanvasFrame],
+  );
 
   return (
     <section className={styles.canvas} aria-label="Canvas">
@@ -95,6 +127,10 @@ export function PageBuilderCanvas(props: {
             draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
             dropTargetId={dropIntent?.parentId ?? null}
             dropInvalidId={dropInvalid?.overId ?? null}
+            inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
+            onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
+            onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
+            onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
             onSelect={renderMode === "editor" ? onSelect : undefined}
             onHover={renderMode === "editor" ? onHover : undefined}
           />

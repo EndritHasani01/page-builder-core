@@ -16,6 +16,8 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   if (!el) return false;
 
   if (el.isContentEditable) return true;
+  const contentEditableAttr = el.getAttribute("contenteditable");
+  if (contentEditableAttr !== null && contentEditableAttr.toLowerCase() !== "false") return true;
 
   const tag = el.tagName;
   if (tag === "TEXTAREA" || tag === "SELECT") return true;
@@ -66,4 +68,3 @@ export function getShortcutAction(e: KeyboardLike): ShortcutAction | null {
 
   return null;
 }
-

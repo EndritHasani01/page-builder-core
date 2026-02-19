@@ -1,5 +1,5 @@
-import type { CSSProperties, MouseEvent } from "react";
-import { memo, useMemo } from "react";
+import type { CSSProperties, ClipboardEvent, KeyboardEvent, MouseEvent } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -28,6 +28,11 @@ export type RenderDocumentProps = {
   draggingId?: NodeId | null;
   dropTargetId?: NodeId | null;
   dropInvalidId?: NodeId | null;
+
+  inlineTextEditingId?: NodeId | null;
+  onStartInlineTextEdit?: (nodeId: NodeId) => void;
+  onCommitInlineTextEdit?: (nodeId: NodeId, nextText: string) => void;
+  onCancelInlineTextEdit?: (nodeId: NodeId) => void;
 };
 
 export function RenderDocument(props: RenderDocumentProps) {
@@ -149,6 +154,10 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
     chromeClassName,
     dataAttrs,
     nodeStyle,
+    inlineTextEditingId: props.inlineTextEditingId,
+    onStartInlineTextEdit: props.onStartInlineTextEdit,
+    onCommitInlineTextEdit: props.onCommitInlineTextEdit,
+    onCancelInlineTextEdit: props.onCancelInlineTextEdit,
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
@@ -169,6 +178,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     Boolean(props.enableDnd) &&
     Boolean(node) &&
     nodeId !== props.doc.rootId &&
+    props.inlineTextEditingId !== nodeId &&
     node.constraints?.locked !== true &&
     node.constraints?.draggable !== false;
 
@@ -286,6 +296,10 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     dataAttrs,
     nodeStyle,
     wrapperStyle,
+    inlineTextEditingId: props.inlineTextEditingId,
+    onStartInlineTextEdit: props.onStartInlineTextEdit,
+    onCommitInlineTextEdit: props.onCommitInlineTextEdit,
+    onCancelInlineTextEdit: props.onCancelInlineTextEdit,
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
@@ -309,6 +323,11 @@ function renderNode(args: {
   onMouseLeave?: () => void;
   children: React.ReactNode;
   dndRef?: (el: HTMLElement | null) => void;
+
+  inlineTextEditingId?: NodeId | null;
+  onStartInlineTextEdit?: (nodeId: NodeId) => void;
+  onCommitInlineTextEdit?: (nodeId: NodeId, nextText: string) => void;
+  onCancelInlineTextEdit?: (nodeId: NodeId) => void;
 }) {
   const { node, mode, breakpoint } = args;
 
@@ -436,6 +455,17 @@ function renderNode(args: {
         return <Tag style={args.nodeStyle}>{node.props.text}</Tag>;
       }
 
+      const isEditing = args.inlineTextEditingId === node.id;
+      const canEditInline = Boolean(args.onStartInlineTextEdit && args.onCommitInlineTextEdit && args.onCancelInlineTextEdit);
+      const startInlineEdit =
+        canEditInline && node.constraints?.locked !== true
+          ? (e: MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              args.onStartInlineTextEdit?.(node.id);
+            }
+          : undefined;
+
       const wrapperClassName =
         Tag === "span"
           ? [styles.wrapped, styles.wrappedInline].join(" ")
@@ -452,9 +482,20 @@ function renderNode(args: {
           onMouseLeave={args.onMouseLeave}
         >
           {args.chrome}
-          <Tag className={args.chromeClassName} style={args.nodeStyle}>
-            {node.props.text}
-          </Tag>
+          {isEditing ? (
+            <InlineEditableText
+              tag={Tag}
+              text={node.props.text}
+              className={args.chromeClassName}
+              style={args.nodeStyle}
+              onCommit={(nextText) => args.onCommitInlineTextEdit?.(node.id, nextText)}
+              onCancel={() => args.onCancelInlineTextEdit?.(node.id)}
+            />
+          ) : (
+            <Tag className={args.chromeClassName} style={args.nodeStyle} onDoubleClick={startInlineEdit}>
+              {node.props.text}
+            </Tag>
+          )}
         </div>
       );
     }
@@ -643,4 +684,110 @@ function renderNode(args: {
       return _exhaustive;
     }
   }
+}
+
+function InlineEditableText(props: {
+  tag: "p" | "h1" | "h2" | "h3" | "span";
+  text: string;
+  className?: string;
+  style?: CSSProperties;
+  onCommit: (nextText: string) => void;
+  onCancel: () => void;
+}) {
+  const elRef = useRef<HTMLElement | null>(null);
+  const endedRef = useRef(false);
+
+  const endIfNeeded = useCallback(() => {
+    endedRef.current = true;
+  }, []);
+
+  const commit = useCallback(() => {
+    if (endedRef.current) return;
+    endIfNeeded();
+    const nextText = elRef.current?.textContent ?? "";
+    props.onCommit(nextText);
+  }, [endIfNeeded, props]);
+
+  const cancel = useCallback(() => {
+    if (endedRef.current) return;
+    endIfNeeded();
+    props.onCancel();
+  }, [endIfNeeded, props]);
+
+  useLayoutEffect(() => {
+    const el = elRef.current;
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch {
+      el.focus();
+    }
+
+    const sel = window.getSelection();
+    if (!sel) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []);
+
+  const onPastePlainText = useCallback((e: ClipboardEvent<HTMLElement>) => {
+    const text = e.clipboardData.getData("text/plain");
+    e.preventDefault();
+
+    const el = elRef.current;
+    if (!el) return;
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
+      el.textContent = `${el.textContent ?? ""}${text}`;
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+
+    const node = document.createTextNode(text);
+    range.insertNode(node);
+    range.setStartAfter(node);
+    range.collapse(true);
+
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }, []);
+
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLElement>) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        cancel();
+        return;
+      }
+
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        commit();
+      }
+    },
+    [cancel, commit],
+  );
+
+  const Tag = props.tag;
+  return (
+    <Tag
+      ref={elRef as never}
+      className={props.className}
+      style={props.style}
+      contentEditable={true}
+      suppressContentEditableWarning={true}
+      onBlur={commit}
+      onKeyDown={onKeyDown}
+      onPaste={onPastePlainText}
+    >
+      {props.text}
+    </Tag>
+  );
 }

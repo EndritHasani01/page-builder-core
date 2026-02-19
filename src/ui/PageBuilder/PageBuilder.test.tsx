@@ -187,6 +187,67 @@ describe("PageBuilder integration", () => {
     expect(screen.getByText(/Unsafe URLs are removed from HTML export/i)).toBeInTheDocument();
   });
 
+  test("inline editing Text commits on blur", async () => {
+    render(<PageBuilder />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled());
+
+    // Select a Column so palette insertion targets a valid container.
+    fireEvent.click(screen.getAllByLabelText("Drag Column")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /^Text$/ }));
+
+    const canvas = within(screen.getByRole("region", { name: "Canvas" }));
+    fireEvent.doubleClick(canvas.getByText("Text"));
+
+    const editable = canvas.getByText("Text");
+    expect(editable).toHaveAttribute("contenteditable", "true");
+
+    editable.textContent = "Inline edit";
+    fireEvent.blur(editable);
+
+    await waitFor(() => {
+      const textNodes = Object.values(editorStore.getState().doc.nodes).filter((n) => n.type === "text");
+      expect(textNodes).toHaveLength(1);
+      const node = textNodes[0];
+      if (!node) throw new Error("Expected a Text node to exist.");
+      if (node.type !== "text") throw new Error("Expected node to be of type text.");
+      expect(node.props.text).toBe("Inline edit");
+    });
+
+    expect(canvas.getByText("Inline edit")).toBeInTheDocument();
+  });
+
+  test("inline editing Text cancels on Escape", async () => {
+    render(<PageBuilder />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled());
+
+    // Select a Column so palette insertion targets a valid container.
+    fireEvent.click(screen.getAllByLabelText("Drag Column")[0]);
+    fireEvent.click(screen.getByRole("button", { name: /^Text$/ }));
+
+    const canvas = within(screen.getByRole("region", { name: "Canvas" }));
+    fireEvent.doubleClick(canvas.getByText("Text"));
+
+    const editable = canvas.getByText("Text");
+    expect(editable).toHaveAttribute("contenteditable", "true");
+
+    editable.textContent = "Should not commit";
+    fireEvent.keyDown(editable, { key: "Escape" });
+
+    await waitFor(() => {
+      const textNodes = Object.values(editorStore.getState().doc.nodes).filter((n) => n.type === "text");
+      expect(textNodes).toHaveLength(1);
+      const node = textNodes[0];
+      if (!node) throw new Error("Expected a Text node to exist.");
+      if (node.type !== "text") throw new Error("Expected node to be of type text.");
+      expect(node.props.text).toBe("Text");
+    });
+
+    expect(canvas.getByText("Text")).toBeInTheDocument();
+    expect(canvas.queryByText("Should not commit")).not.toBeInTheDocument();
+  });
+
   test("editing Columns count uses a numeric patch and keeps children in sync", async () => {
     const originalDispatch = editorStore.getState().dispatch;
     const dispatchSpy = vi.fn((action, opts) => originalDispatch(action, opts));
