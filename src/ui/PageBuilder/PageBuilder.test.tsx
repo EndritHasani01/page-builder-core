@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createDefaultDocument, createDeterministicIdFactory, createNode, validateDocument } from "@/editor-core";
@@ -185,5 +185,65 @@ describe("PageBuilder integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     expect(screen.getByText(/Unsafe URLs are removed from HTML export/i)).toBeInTheDocument();
+  });
+
+  test("editing Columns count uses a numeric patch and keeps children in sync", async () => {
+    const originalDispatch = editorStore.getState().dispatch;
+    const dispatchSpy = vi.fn((action, opts) => originalDispatch(action, opts));
+    editorStore.setState({ dispatch: dispatchSpy });
+
+    try {
+      render(<PageBuilder />);
+      await waitFor(() => expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled());
+
+      const canvas = within(screen.getByRole("region", { name: "Canvas" }));
+      fireEvent.click(canvas.getByLabelText("Drag Columns"));
+
+      const inspector = within(screen.getByRole("complementary", { name: "Inspector" }));
+      const input = inspector.getByLabelText(/^Columns/);
+
+      expect(input).toHaveAttribute("type", "number");
+      expect(input).toHaveAttribute("min", "2");
+      expect(input).toHaveAttribute("max", "6");
+      expect(input).toHaveAttribute("step", "1");
+
+      fireEvent.change(input, { target: { value: "3" } });
+
+      const updatePropsCalls = dispatchSpy.mock.calls
+        .map(([action]) => action)
+        .filter(
+          (action) =>
+            typeof action === "object" &&
+            action !== null &&
+            "type" in action &&
+            action.type === "UPDATE_PROPS" &&
+            "nodeId" in action &&
+            action.nodeId === "columns_1" &&
+            "patch" in action &&
+            typeof action.patch === "object" &&
+            action.patch !== null &&
+            Object.prototype.hasOwnProperty.call(action.patch, "columns"),
+        );
+
+      expect(updatePropsCalls.length).toBeGreaterThan(0);
+      const last = updatePropsCalls[updatePropsCalls.length - 1] as { patch: Record<string, unknown> };
+      expect(typeof last.patch.columns).toBe("number");
+      expect(last.patch.columns).toBe(3);
+
+      const doc = editorStore.getState().doc;
+      const columnsNode = doc.nodes.columns_1;
+      expect(columnsNode.type).toBe("columns");
+      if (columnsNode.type !== "columns") throw new Error('Expected "columns_1" node to be of type "columns".');
+
+      expect(columnsNode.props.columns).toBe(3);
+      expect(columnsNode.children).toHaveLength(3);
+      expect(doc.nodes.column_3?.type).toBe("column");
+
+      await waitFor(() => expect(screen.getAllByLabelText("Drag Column")).toHaveLength(3));
+    } finally {
+      act(() => {
+        editorStore.setState({ dispatch: originalDispatch });
+      });
+    }
   });
 });

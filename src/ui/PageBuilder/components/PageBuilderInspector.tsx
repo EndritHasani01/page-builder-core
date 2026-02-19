@@ -227,9 +227,12 @@ function InspectorContent(props: {
 function InspectorPropField(props: {
   nodeProps: Record<string, unknown>;
   field: {
-    kind: "text" | "select" | "color" | "length" | "toggle";
+    kind: "text" | "number" | "select" | "color" | "length" | "toggle";
     path: string;
     label: string;
+    min?: number;
+    max?: number;
+    step?: number;
     placeholder?: string;
     required?: boolean;
     options?: { label: string; value: string }[];
@@ -287,6 +290,36 @@ function InspectorPropField(props: {
           value={rawValue === undefined || rawValue === null ? "" : String(rawValue)}
           placeholder={props.field.placeholder}
           onChange={(e) => props.onChange(e.target.value)}
+        />
+      ) : null}
+
+      {props.field.kind === "number" ? (
+        <input
+          {...common}
+          type="number"
+          inputMode="numeric"
+          min={typeof props.field.min === "number" ? props.field.min : undefined}
+          max={typeof props.field.max === "number" ? props.field.max : undefined}
+          step={typeof props.field.step === "number" ? props.field.step : undefined}
+          value={typeof rawValue === "number" ? String(rawValue) : typeof rawValue === "string" ? rawValue : ""}
+          placeholder={props.field.placeholder}
+          onChange={(e) => {
+            const nextRaw = e.target.value;
+            if (!nextRaw.trim()) {
+              if (props.field.required) return;
+              props.onChange(undefined);
+              return;
+            }
+
+            const nextNum = Number(nextRaw);
+            if (!Number.isFinite(nextNum)) return;
+
+            let clamped = nextNum;
+            if (typeof props.field.min === "number") clamped = Math.max(props.field.min, clamped);
+            if (typeof props.field.max === "number") clamped = Math.min(props.field.max, clamped);
+            if (props.field.step === 1) clamped = Math.trunc(clamped);
+            props.onChange(clamped);
+          }}
         />
       ) : null}
 
@@ -588,11 +621,12 @@ function TokenTextField(props: {
   onChange: (value: string) => void;
   "aria-invalid"?: boolean | undefined;
 }) {
-  const datalistId = props.tokens?.length ? `${props.id ?? "token"}_tokens` : undefined;
+  const tokens = props.tokens?.length ? Array.from(new Set(props.tokens)) : undefined;
+  const datalistId = tokens?.length ? `${props.id ?? "token"}_tokens` : undefined;
 
   return (
     <div className={styles.tokenField}>
-      {props.tokens?.length ? (
+      {tokens?.length ? (
         <select
           className={styles.tokenSelect}
           disabled={props.disabled}
@@ -605,7 +639,7 @@ function TokenTextField(props: {
           }}
         >
           <option value="">Tokens</option>
-          {props.tokens.map((t) => (
+          {tokens.map((t) => (
             <option key={t} value={t}>
               {t}
             </option>
@@ -626,7 +660,7 @@ function TokenTextField(props: {
 
       {datalistId ? (
         <datalist id={datalistId}>
-          {props.tokens?.map((t) => (
+          {tokens?.map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
@@ -642,4 +676,3 @@ function propKeyFromPath(path: string): string | null {
   if (key.includes(".")) return null;
   return key;
 }
-

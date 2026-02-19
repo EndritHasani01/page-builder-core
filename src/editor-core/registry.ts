@@ -91,7 +91,7 @@ export const blockRegistry: BlockRegistry = {
         {
           label: "Layout",
           fields: [
-            { kind: "text", path: "props.columns", label: "Columns" },
+            { kind: "number", path: "props.columns", label: "Columns", min: 2, max: 6, step: 1, required: true },
             { kind: "length", path: "props.gap", label: "Gap", tokens: ["var(--space-2)", "var(--space-4)"] },
           ],
         },

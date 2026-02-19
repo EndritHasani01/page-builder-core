@@ -178,6 +178,16 @@ export type InspectorField =
       required?: boolean;
     }
   | {
+      kind: "number";
+      path: string;
+      label: string;
+      min?: number;
+      max?: number;
+      step?: number;
+      placeholder?: string;
+      required?: boolean;
+    }
+  | {
       kind: "select";
       path: string;
       label: string;
