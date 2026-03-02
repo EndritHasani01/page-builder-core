@@ -80,4 +80,33 @@ describe("export", () => {
     expect(warningText).toContain("image.src");
     expect(warningText).toContain("image.linkTo");
   });
+
+  test("full-mode export includes theme CSS custom properties in a :root style block", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).toContain("<style>");
+    expect(res.html).toContain(":root{");
+    expect(res.html).toContain("--color-bg:");
+    expect(res.html).toContain("--color-primary:");
+    expect(res.html).toContain("--font-body:");
+    expect(res.html).toContain("--space-unit:");
+  });
+
+  test("full-mode export reflects a custom theme color in the :root block", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.theme.colors.primary = "#ff1234";
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).toContain("--color-primary:#ff1234");
+  });
+
+  test("snippet-mode export does not include a :root style block", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "snippet" });
+
+    expect(res.html).not.toContain(":root{");
+    expect(res.html).not.toContain("<style>");
+  });
 });
