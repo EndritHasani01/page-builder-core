@@ -136,6 +136,8 @@ function defaultHistoryLabel(action: DocCommand): string {
       return "Insert";
     case "UPDATE_THEME":
       return "Update theme";
+    case "UPDATE_CONSTRAINTS":
+      return "Constraints";
     default: {
       const _exhaustive: never = action;
       return _exhaustive;

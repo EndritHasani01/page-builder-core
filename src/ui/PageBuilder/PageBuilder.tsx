@@ -34,7 +34,6 @@ export function PageBuilder() {
 
   const persistence = usePageBuilderPersistence({ pushToast });
 
-  const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
   const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
   const [themeOpen, setThemeOpen] = useState(false);
   const [dialog, setDialog] = useState<PageBuilderDialog>(null);
@@ -200,7 +199,7 @@ export function PageBuilder() {
                 <>
                   <div className={styles.panelTitle}>Inspector</div>
                   <div className={styles.panelBody}>
-                    <PageBuilderInspector tab={inspectorTab} onTabChange={setInspectorTab} />
+                    <PageBuilderInspector />
                   </div>
                 </>
               )}
@@ -236,7 +235,7 @@ export function PageBuilder() {
 
         {isNarrow && mobilePanel === "inspector" ? (
           <Drawer title="Inspector" side="right" onClose={() => setMobilePanel(null)}>
-            <PageBuilderInspector tab={inspectorTab} onTabChange={setInspectorTab} />
+            <PageBuilderInspector />
           </Drawer>
         ) : null}
 

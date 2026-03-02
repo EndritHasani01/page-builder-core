@@ -1,5 +1,5 @@
 import type { ChangeEvent } from "react";
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 
 import type { Breakpoint, Document, NodeId, NodeType, StyleProps, ValidationIssue } from "@/editor-core";
 import {
@@ -16,8 +16,111 @@ import type { DispatchOptions, EditorAction, Mode } from "@/store";
 import { useEditorStore } from "@/store";
 
 import styles from "../PageBuilder.module.css";
+import { BoxModelEditor } from "./BoxModelEditor";
 
-export function PageBuilderInspector(props: { tab: "content" | "style"; onTabChange: (tab: "content" | "style") => void }) {
+// ─── Section visibility ──────────────────────────────────────────────────────
+
+const LAYOUT_TYPES: NodeType[] = ["section", "columns", "column", "container"];
+const TYPOGRAPHY_TYPES: NodeType[] = ["text", "button"];
+const SPACING_TYPES: NodeType[] = ["section", "columns", "column", "container", "text", "image", "button"];
+const APPEARANCE_TYPES: NodeType[] = ["section", "columns", "column", "container", "text", "image", "button"];
+
+// ─── Quick type-switch config ─────────────────────────────────────────────────
+
+type VariantOption = { label: string; value: string };
+
+function getVariantPropKey(type: NodeType): "as" | "variant" | null {
+  if (type === "text" || type === "container") return "as";
+  if (type === "section" || type === "button") return "variant";
+  return null;
+}
+
+function getVariantOptions(type: NodeType): VariantOption[] | null {
+  if (type === "text") {
+    return [
+      { label: "p", value: "p" },
+      { label: "h1", value: "h1" },
+      { label: "h2", value: "h2" },
+      { label: "h3", value: "h3" },
+      { label: "span", value: "span" },
+    ];
+  }
+  if (type === "container") {
+    return [
+      { label: "div", value: "div" },
+      { label: "main", value: "main" },
+      { label: "header", value: "header" },
+      { label: "footer", value: "footer" },
+    ];
+  }
+  if (type === "section") {
+    return [
+      { label: "default", value: "default" },
+      { label: "hero", value: "hero" },
+    ];
+  }
+  if (type === "button") {
+    return [
+      { label: "primary", value: "primary" },
+      { label: "secondary", value: "secondary" },
+    ];
+  }
+  return null;
+}
+
+// ─── Style section field helpers ──────────────────────────────────────────────
+
+const LAYOUT_STYLE_KEYS: (keyof StyleProps)[] = ["display", "flexDirection", "justifyContent", "alignItems", "gap"];
+const SPACING_STYLE_KEYS: (keyof StyleProps)[] = [
+  "padding",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+  "margin",
+  "marginTop",
+  "marginRight",
+  "marginBottom",
+  "marginLeft",
+];
+const TYPOGRAPHY_STYLE_KEYS: (keyof StyleProps)[] = [
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "textAlign",
+  "color",
+];
+const APPEARANCE_STYLE_KEYS: (keyof StyleProps)[] = [
+  "backgroundColor",
+  "borderRadius",
+  "border",
+  "boxShadow",
+  "opacity",
+];
+
+function hasAnyStyleValue(
+  style: import("@/editor-core").Responsive<StyleProps> | undefined,
+  keys: (keyof StyleProps)[],
+): boolean {
+  if (!style) return false;
+  const buckets = [style.base, style.sm, style.md, style.lg].filter(Boolean) as Partial<StyleProps>[];
+  return buckets.some((b) => keys.some((k) => k in b));
+}
+
+function hasContentOverrides(node: { type: NodeType; props: Record<string, unknown> }): boolean {
+  const def = blockRegistry[node.type];
+  const defaults = def.defaultProps as Record<string, unknown>;
+  return Object.keys(defaults).some((k) => {
+    const v = node.props[k];
+    const d = defaults[k];
+    return JSON.stringify(v) !== JSON.stringify(d);
+  });
+}
+
+// ─── Public component ─────────────────────────────────────────────────────────
+
+export function PageBuilderInspector() {
   const doc = useEditorStore((s) => s.doc);
   const issues = useEditorStore((s) => s.issues);
   const selectedId = useEditorStore((s) => s.selectedId);
@@ -25,74 +128,121 @@ export function PageBuilderInspector(props: { tab: "content" | "style"; onTabCha
   const breakpoint = useEditorStore((s) => s.breakpoint);
   const dispatch = useEditorStore((s) => s.dispatch);
 
+  const node = selectedId ? doc.nodes[selectedId] : undefined;
+  if (!node) {
+    return <p className={styles.muted}>Select a node to edit.</p>;
+  }
+
   return (
     <InspectorPanel
+      key={selectedId}
       doc={doc}
       issues={issues}
-      selectedId={selectedId}
+      selectedId={selectedId!}
       mode={mode}
       breakpoint={breakpoint}
-      tab={props.tab}
-      onTabChange={props.onTabChange}
       dispatch={dispatch}
     />
   );
 }
 
+// ─── InspectorPanel ───────────────────────────────────────────────────────────
+
 function InspectorPanel(props: {
   doc: Document;
   issues: ValidationIssue[];
-  selectedId: NodeId | null;
+  selectedId: NodeId;
   mode: Mode;
   breakpoint: Breakpoint;
-  tab: "content" | "style";
-  onTabChange: (tab: "content" | "style") => void;
   dispatch: (action: EditorAction, opts?: DispatchOptions) => void;
 }) {
-  const node = props.selectedId ? props.doc.nodes[props.selectedId] : undefined;
-  if (!node) {
-    return <p className={styles.muted}>Select a node to edit.</p>;
-  }
+  const node = props.doc.nodes[props.selectedId];
+  if (!node) return null;
 
   const def = blockRegistry[node.type];
   const locked = Boolean(node.constraints?.locked);
   const disabled = locked || props.mode === "preview";
 
+  const nodeProps = node.props as Record<string, unknown>;
+  const nodeStyle = node.style;
   const nodeIssues = props.issues.filter((i) => i.nodeId === node.id);
   const errorCount = props.issues.filter((i) => i.level === "error").length;
   const warningCount = props.issues.length - errorCount;
 
+  // Section expansion state — initialized based on active values
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => {
+    const initial = new Set<string>(["content"]);
+    if (TYPOGRAPHY_TYPES.includes(node.type)) initial.add("typography");
+    if (hasAnyStyleValue(nodeStyle, LAYOUT_STYLE_KEYS)) initial.add("layout");
+    if (hasAnyStyleValue(nodeStyle, SPACING_STYLE_KEYS)) initial.add("spacing");
+    if (hasAnyStyleValue(nodeStyle, APPEARANCE_STYLE_KEYS)) initial.add("appearance");
+    if (node.constraints?.locked || node.constraints?.hidden) initial.add("constraints");
+    return initial;
+  });
+
+  const toggle = (key: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Dispatch helpers
+  const patchProps = (patch: Record<string, unknown>, keyForCoalesce: string) => {
+    props.dispatch(
+      { type: "UPDATE_PROPS", nodeId: node.id, patch },
+      { coalesceKey: `props:${node.id}:${keyForCoalesce}`, historyLabel: "Edit" },
+    );
+  };
+
+  const patchStyle = (patch: Partial<StyleProps>, keyForCoalesce: string) => {
+    props.dispatch(
+      { type: "UPDATE_STYLE", nodeId: node.id, breakpoint: props.breakpoint, patch },
+      { coalesceKey: `style:${node.id}:${props.breakpoint}:${keyForCoalesce}`, historyLabel: "Style" },
+    );
+  };
+
+  const patchConstraints = (patch: Partial<import("@/editor-core").NodeConstraints>) => {
+    props.dispatch({ type: "UPDATE_CONSTRAINTS", nodeId: node.id, patch }, { historyLabel: "Constraints" });
+  };
+
+  const resetBreakpoint = () => {
+    props.dispatch(
+      { type: "RESET_STYLE_BREAKPOINT", nodeId: node.id, breakpoint: props.breakpoint },
+      { historyLabel: "Reset styles" },
+    );
+  };
+
+  const showLayout = LAYOUT_TYPES.includes(node.type);
+  const showSpacing = SPACING_TYPES.includes(node.type);
+  const showTypography = TYPOGRAPHY_TYPES.includes(node.type);
+  const showAppearance = APPEARANCE_TYPES.includes(node.type);
+
+  const hasLayoutOverride = hasAnyStyleValue(nodeStyle, LAYOUT_STYLE_KEYS);
+  const hasSpacingOverride = hasAnyStyleValue(nodeStyle, SPACING_STYLE_KEYS);
+  const hasTypographyOverride = hasAnyStyleValue(nodeStyle, TYPOGRAPHY_STYLE_KEYS);
+  const hasAppearanceOverride = hasAnyStyleValue(nodeStyle, APPEARANCE_STYLE_KEYS);
+  const hasConstraintsOverride = Boolean(node.constraints?.locked || node.constraints?.hidden);
+  const hasContentOverride = hasContentOverrides({ type: node.type, props: nodeProps });
+
+  const canResetBreakpoint =
+    props.breakpoint === "base"
+      ? Boolean(nodeStyle && Object.keys(nodeStyle.base ?? {}).length > 0)
+      : Boolean(nodeStyle?.[props.breakpoint] && Object.keys(nodeStyle[props.breakpoint] ?? {}).length > 0);
+
   return (
     <div className={styles.inspector}>
-      <div className={styles.inspectorHeader}>
-        <div className={styles.inspectorTitleRow}>
-          <div className={styles.inspectorNodeLabel}>{def.label}</div>
-          {locked ? <span className={styles.badge}>Locked</span> : null}
-          {node.constraints?.hidden ? <span className={styles.badge}>Hidden</span> : null}
-        </div>
-        <div className={styles.inspectorNodeMeta}>{node.id}</div>
-      </div>
-
-      <div className={styles.tabList} role="tablist" aria-label="Inspector tabs">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={props.tab === "content"}
-          className={props.tab === "content" ? styles.tabButtonActive : styles.tabButton}
-          onClick={() => props.onTabChange("content")}
-        >
-          Content
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={props.tab === "style"}
-          className={props.tab === "style" ? styles.tabButtonActive : styles.tabButton}
-          onClick={() => props.onTabChange("style")}
-        >
-          Style
-        </button>
-      </div>
+      {/* Type switcher header */}
+      <TypeSwitcher
+        type={node.type}
+        nodeProps={nodeProps}
+        locked={locked}
+        hidden={Boolean(node.constraints?.hidden)}
+        disabled={disabled}
+        onPatchProps={patchProps}
+      />
 
       {props.mode === "preview" ? (
         <div className={styles.inlineNotice} role="note">
@@ -100,45 +250,155 @@ function InspectorPanel(props: {
         </div>
       ) : null}
 
-      {props.tab === "content" ? (
-        <InspectorContent
-          node={node}
-          disabled={disabled}
-          nodeIssues={nodeIssues}
-          onPatchProps={(patch, keyForCoalesce) =>
-            props.dispatch(
-              { type: "UPDATE_PROPS", nodeId: node.id, patch },
-              { coalesceKey: `props:${node.id}:${keyForCoalesce}`, historyLabel: "Edit" },
-            )
-          }
-          onResetProp={(propKey) => {
-            const defaultValue = (def.defaultProps as Record<string, unknown>)[propKey];
-            props.dispatch({ type: "UPDATE_PROPS", nodeId: node.id, patch: { [propKey]: defaultValue } }, { historyLabel: "Reset" });
-          }}
-        />
+      {/* Breakpoint row */}
+      <div className={styles.inlineRow}>
+        <div className={styles.muted} style={{ margin: 0 }}>
+          Breakpoint: <strong>{props.breakpoint.toUpperCase()}</strong>
+        </div>
+        <button
+          type="button"
+          className={styles.resetButton}
+          disabled={disabled || !canResetBreakpoint}
+          onClick={resetBreakpoint}
+        >
+          Reset bp
+        </button>
+      </div>
+
+      {/* Content section */}
+      {def.inspector ? (
+        <CollapsibleSection
+          label="Content"
+          sectionKey="content"
+          expanded={expandedSections.has("content")}
+          hasOverrides={hasContentOverride}
+          onToggle={toggle}
+        >
+          <ContentSection
+            node={node}
+            disabled={disabled}
+            nodeIssues={nodeIssues}
+            onPatchProps={patchProps}
+            onResetProp={(propKey) => {
+              const defaultValue = (def.defaultProps as Record<string, unknown>)[propKey];
+              props.dispatch({ type: "UPDATE_PROPS", nodeId: node.id, patch: { [propKey]: defaultValue } }, { historyLabel: "Reset" });
+            }}
+          />
+        </CollapsibleSection>
       ) : null}
 
-      {props.tab === "style" ? (
-        <InspectorStyle
-          node={node}
-          disabled={disabled}
-          nodeIssues={nodeIssues}
-          breakpoint={props.breakpoint}
-          onPatchStyle={(patch, keyForCoalesce) =>
-            props.dispatch(
-              { type: "UPDATE_STYLE", nodeId: node.id, breakpoint: props.breakpoint, patch },
-              { coalesceKey: `style:${node.id}:${props.breakpoint}:${keyForCoalesce}`, historyLabel: "Style" },
-            )
-          }
-          onResetBreakpoint={() => {
-            props.dispatch(
-              { type: "RESET_STYLE_BREAKPOINT", nodeId: node.id, breakpoint: props.breakpoint },
-              { historyLabel: "Reset styles" },
-            );
-          }}
-        />
+      {/* Layout section */}
+      {showLayout ? (
+        <CollapsibleSection
+          label="Layout"
+          sectionKey="layout"
+          expanded={expandedSections.has("layout")}
+          hasOverrides={hasLayoutOverride}
+          onToggle={toggle}
+        >
+          <StyleFieldGroup
+            fields={[
+              { key: "display", label: "Display", kind: "select", options: ["", "block", "flex"] },
+              { key: "flexDirection", label: "Direction", kind: "select", options: ["", "row", "column"] },
+              { key: "justifyContent", label: "Justify", kind: "select", options: ["", "flex-start", "center", "flex-end", "space-between"] },
+              { key: "alignItems", label: "Align", kind: "select", options: ["", "stretch", "flex-start", "center", "flex-end"] },
+              { key: "gap", label: "Gap", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
+            ]}
+            nodeStyle={nodeStyle}
+            breakpoint={props.breakpoint}
+            disabled={disabled}
+            onPatchStyle={patchStyle}
+          />
+        </CollapsibleSection>
       ) : null}
 
+      {/* Spacing section (box model) */}
+      {showSpacing ? (
+        <CollapsibleSection
+          label="Spacing"
+          sectionKey="spacing"
+          expanded={expandedSections.has("spacing")}
+          hasOverrides={hasSpacingOverride}
+          onToggle={toggle}
+        >
+          <SpacingSection
+            nodeStyle={nodeStyle}
+            breakpoint={props.breakpoint}
+            blockLabel={def.label}
+            disabled={disabled}
+            onPatchStyle={patchStyle}
+          />
+        </CollapsibleSection>
+      ) : null}
+
+      {/* Typography section */}
+      {showTypography ? (
+        <CollapsibleSection
+          label="Typography"
+          sectionKey="typography"
+          expanded={expandedSections.has("typography")}
+          hasOverrides={hasTypographyOverride}
+          onToggle={toggle}
+        >
+          <StyleFieldGroup
+            fields={[
+              { key: "fontFamily", label: "Font family", kind: "text", tokens: FONT_FAMILY_TOKENS.map((t) => t.value) },
+              { key: "fontSize", label: "Font size", kind: "text", tokens: FONT_SIZE_TOKENS.map((t) => t.value) },
+              { key: "fontWeight", label: "Font weight", kind: "text" },
+              { key: "lineHeight", label: "Line height", kind: "text" },
+              { key: "textAlign", label: "Align", kind: "select", options: ["", "left", "center", "right"] },
+              { key: "color", label: "Color", kind: "color", tokens: COLOR_TOKENS.map((t) => t.value) },
+            ]}
+            nodeStyle={nodeStyle}
+            breakpoint={props.breakpoint}
+            disabled={disabled}
+            onPatchStyle={patchStyle}
+          />
+        </CollapsibleSection>
+      ) : null}
+
+      {/* Appearance section */}
+      {showAppearance ? (
+        <CollapsibleSection
+          label="Appearance"
+          sectionKey="appearance"
+          expanded={expandedSections.has("appearance")}
+          hasOverrides={hasAppearanceOverride}
+          onToggle={toggle}
+        >
+          <StyleFieldGroup
+            fields={[
+              { key: "backgroundColor", label: "Background", kind: "color", tokens: COLOR_TOKENS.map((t) => t.value) },
+              { key: "borderRadius", label: "Radius", kind: "length" },
+              { key: "border", label: "Border", kind: "text" },
+              { key: "boxShadow", label: "Shadow", kind: "text" },
+              { key: "opacity", label: "Opacity", kind: "number" },
+            ]}
+            nodeStyle={nodeStyle}
+            breakpoint={props.breakpoint}
+            disabled={disabled}
+            onPatchStyle={patchStyle}
+          />
+        </CollapsibleSection>
+      ) : null}
+
+      {/* Constraints section */}
+      <CollapsibleSection
+        label="Constraints"
+        sectionKey="constraints"
+        expanded={expandedSections.has("constraints")}
+        hasOverrides={hasConstraintsOverride}
+        onToggle={toggle}
+      >
+        <ConstraintsSection
+          locked={Boolean(node.constraints?.locked)}
+          hidden={Boolean(node.constraints?.hidden)}
+          disabled={props.mode === "preview"}
+          onPatch={patchConstraints}
+        />
+      </CollapsibleSection>
+
+      {/* Issues panel */}
       <details className={styles.issuesPanel} open={errorCount > 0}>
         <summary className={styles.issuesSummary}>
           Issues ({errorCount} errors, {warningCount} warnings)
@@ -180,7 +440,86 @@ function InspectorPanel(props: {
   );
 }
 
-function InspectorContent(props: {
+// ─── TypeSwitcher ─────────────────────────────────────────────────────────────
+
+function TypeSwitcher(props: {
+  type: NodeType;
+  nodeProps: Record<string, unknown>;
+  locked: boolean;
+  hidden: boolean;
+  disabled: boolean;
+  onPatchProps: (patch: Record<string, unknown>, key: string) => void;
+}) {
+  const def = blockRegistry[props.type];
+  const variantKey = getVariantPropKey(props.type);
+  const variantOptions = getVariantOptions(props.type);
+  const currentVariant = variantKey ? String(props.nodeProps[variantKey] ?? "") : null;
+
+  const typeLabel = variantKey && currentVariant ? `${def.label} — ${currentVariant}` : def.label;
+
+  return (
+    <div className={styles.typeSwitcher}>
+      <div className={styles.typeSwitcherLeft}>
+        <span className={styles.typeSwitcherLabel}>{typeLabel}</span>
+        <span className={styles.typeSwitcherMeta}>{props.locked ? "Locked" : props.hidden ? "Hidden" : ""}</span>
+      </div>
+      {variantOptions && variantKey ? (
+        <select
+          className={styles.typeSwitcherSelect}
+          value={currentVariant ?? ""}
+          disabled={props.disabled}
+          aria-label={`Switch ${def.label} variant`}
+          onChange={(e) => {
+            props.onPatchProps({ [variantKey]: e.target.value }, variantKey);
+          }}
+        >
+          {variantOptions.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── CollapsibleSection ───────────────────────────────────────────────────────
+
+function CollapsibleSection(props: {
+  label: string;
+  sectionKey: string;
+  expanded: boolean;
+  hasOverrides: boolean;
+  onToggle: (key: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={styles.inspectorCollapsible}>
+      <button
+        type="button"
+        className={styles.sectionHeader}
+        onClick={() => props.onToggle(props.sectionKey)}
+        aria-expanded={props.expanded}
+      >
+        <span className={styles.sectionChevron} aria-hidden="true">
+          {props.expanded ? "▾" : "▸"}
+        </span>
+        <span className={styles.sectionLabel}>{props.label}</span>
+        {props.hasOverrides ? <span className={styles.sectionOverrideDot} aria-hidden="true" /> : null}
+      </button>
+      {props.expanded ? (
+        <div className={styles.sectionBody} role="region" aria-label={props.label}>
+          {props.children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── ContentSection ───────────────────────────────────────────────────────────
+
+function ContentSection(props: {
   node: { id: NodeId; type: NodeType; props: Record<string, unknown> };
   disabled: boolean;
   nodeIssues: ValidationIssue[];
@@ -190,271 +529,79 @@ function InspectorContent(props: {
   const schema = blockRegistry[props.node.type].inspector;
   if (!schema) return <p className={styles.muted}>No inspector schema defined.</p>;
 
-  const groups = schema.groups;
   return (
-    <div className={styles.inspectorSection} role="tabpanel" aria-label="Content">
-      {groups.map((g) => (
-        <div key={g.label} className={styles.group}>
-          <div className={styles.groupHeader}>{g.label}</div>
-          <div className={styles.groupBody}>
-            {g.fields.map((field) => (
-              <Fragment key={field.path}>
-                <InspectorPropField
-                  nodeProps={props.node.props}
-                  field={field}
-                  disabled={props.disabled}
-                  issues={props.nodeIssues.filter((i) => i.fieldPath === field.path)}
-                  onChange={(value) => {
-                    const key = propKeyFromPath(field.path);
-                    if (!key) return;
-                    props.onPatchProps({ [key]: value }, key);
-                  }}
-                  onReset={() => {
-                    const key = propKeyFromPath(field.path);
-                    if (!key) return;
-                    props.onResetProp(key);
-                  }}
-                />
-              </Fragment>
-            ))}
-          </div>
-        </div>
+    <div className={styles.groupBody}>
+      {schema.groups.map((g) => (
+        <Fragment key={g.label}>
+          {schema.groups.length > 1 ? <div className={styles.subGroupLabel}>{g.label}</div> : null}
+          {g.fields.map((field) => (
+            <Fragment key={field.path}>
+              <InspectorPropField
+                nodeProps={props.node.props}
+                field={field}
+                disabled={props.disabled}
+                issues={props.nodeIssues.filter((i) => i.fieldPath === field.path)}
+                onChange={(value) => {
+                  const key = propKeyFromPath(field.path);
+                  if (!key) return;
+                  props.onPatchProps({ [key]: value }, key);
+                }}
+                onReset={() => {
+                  const key = propKeyFromPath(field.path);
+                  if (!key) return;
+                  props.onResetProp(key);
+                }}
+              />
+            </Fragment>
+          ))}
+        </Fragment>
       ))}
     </div>
   );
 }
 
-function InspectorPropField(props: {
-  nodeProps: Record<string, unknown>;
-  field: {
-    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info";
-    path: string;
-    label: string;
-    min?: number;
-    max?: number;
-    step?: number;
-    placeholder?: string;
-    required?: boolean;
-    message?: string;
-    options?: { label: string; value: string }[];
-    tokens?: string[];
-  };
-  disabled: boolean;
-  issues: ValidationIssue[];
-  onChange: (value: unknown) => void;
-  onReset: () => void;
-}) {
-  const key = propKeyFromPath(props.field.path);
-  const rawValue = key ? props.nodeProps[key] : undefined;
+// ─── SpacingSection ───────────────────────────────────────────────────────────
 
-  // Info fields are read-only notices with no input controls.
-  if (props.field.kind === "info") {
-    return (
-      <div className={styles.fieldRow}>
-        <div className={styles.fieldLabel}>{props.field.label}</div>
-        <div className={styles.muted}>{props.field.message ?? ""}</div>
-      </div>
-    );
-  }
-
-  const common = {
-    id: `field_${props.field.path}`,
-    disabled: props.disabled,
-    "aria-invalid": props.issues.some((i) => i.level === "error") || undefined,
-  } as const;
-
-  const resetDisabled = props.disabled || !key;
-
-  return (
-    <div className={styles.fieldRow}>
-      <div className={styles.fieldHeader}>
-        <label className={styles.fieldLabel} htmlFor={common.id}>
-          {props.field.label}
-          {props.field.required ? <span className={styles.required}>*</span> : null}
-        </label>
-        <button type="button" className={styles.resetButton} disabled={resetDisabled} onClick={props.onReset}>
-          Reset
-        </button>
-      </div>
-
-      {props.field.kind === "toggle" ? (
-        <label className={styles.toggleRow}>
-          <input {...common} type="checkbox" checked={Boolean(rawValue)} onChange={(e) => props.onChange(e.target.checked)} />
-          <span className={styles.toggleLabel}>Enabled</span>
-        </label>
-      ) : null}
-
-      {props.field.kind === "select" ? (
-        <select {...common} value={typeof rawValue === "string" ? rawValue : ""} onChange={(e) => props.onChange(e.target.value)}>
-          {(props.field.options ?? []).map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      ) : null}
-
-      {props.field.kind === "text" ? (
-        <input
-          {...common}
-          type={typeof rawValue === "number" ? "number" : "text"}
-          value={rawValue === undefined || rawValue === null ? "" : String(rawValue)}
-          placeholder={props.field.placeholder}
-          onChange={(e) => props.onChange(e.target.value)}
-        />
-      ) : null}
-
-      {props.field.kind === "number" ? (
-        <input
-          {...common}
-          type="number"
-          inputMode="numeric"
-          min={typeof props.field.min === "number" ? props.field.min : undefined}
-          max={typeof props.field.max === "number" ? props.field.max : undefined}
-          step={typeof props.field.step === "number" ? props.field.step : undefined}
-          value={typeof rawValue === "number" ? String(rawValue) : typeof rawValue === "string" ? rawValue : ""}
-          placeholder={props.field.placeholder}
-          onChange={(e) => {
-            const nextRaw = e.target.value;
-            if (!nextRaw.trim()) {
-              if (props.field.required) return;
-              props.onChange(undefined);
-              return;
-            }
-
-            const nextNum = Number(nextRaw);
-            if (!Number.isFinite(nextNum)) return;
-
-            let clamped = nextNum;
-            if (typeof props.field.min === "number") clamped = Math.max(props.field.min, clamped);
-            if (typeof props.field.max === "number") clamped = Math.min(props.field.max, clamped);
-            if (props.field.step === 1) clamped = Math.trunc(clamped);
-            props.onChange(clamped);
-          }}
-        />
-      ) : null}
-
-      {props.field.kind === "length" ? (
-        <TokenTextField
-          {...common}
-          value={typeof rawValue === "string" ? rawValue : ""}
-          placeholder={props.field.placeholder}
-          tokens={[...(props.field.tokens ?? []), ...getSpacingTokens().map((t) => t.value)]}
-          onChange={(v) => props.onChange(v)}
-        />
-      ) : null}
-
-      {props.field.kind === "color" ? (
-        <TokenTextField
-          {...common}
-          value={typeof rawValue === "string" ? rawValue : ""}
-          placeholder={props.field.placeholder}
-          tokens={COLOR_TOKENS.map((t) => t.value)}
-          onChange={(v) => props.onChange(v)}
-        />
-      ) : null}
-
-      {props.issues.length > 0 ? (
-        <div className={styles.fieldIssues} role="alert">
-          {props.issues.map((i, idx) => (
-            <div key={idx} className={i.level === "error" ? styles.issueError : styles.issueWarning}>
-              {i.message}
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function InspectorStyle(props: {
-  node: { id: NodeId; style?: unknown };
-  disabled: boolean;
-  nodeIssues: ValidationIssue[];
+function SpacingSection(props: {
+  nodeStyle: import("@/editor-core").Responsive<StyleProps> | undefined;
   breakpoint: Breakpoint;
-  onPatchStyle: (patch: Partial<StyleProps>, keyForCoalesce: string) => void;
-  onResetBreakpoint: () => void;
+  blockLabel: string;
+  disabled: boolean;
+  onPatchStyle: (patch: Partial<StyleProps>, key: string) => void;
 }) {
-  const node = props.node as unknown as { id: NodeId; style?: import("@/editor-core").Responsive<StyleProps> };
-  const style = node.style;
-
-  const bpBucket = props.breakpoint === "base" ? style?.base : style?.[props.breakpoint];
-
-  const canResetBreakpoint =
-    props.breakpoint === "base"
-      ? Boolean(style && Object.keys(style.base ?? {}).length > 0)
-      : Boolean(bpBucket && Object.keys(bpBucket).length > 0);
+  const style = props.nodeStyle;
+  const base = style?.base ?? {};
+  const bpOverride = props.breakpoint === "base" ? {} : (style?.[props.breakpoint] ?? {});
+  const effective = { ...base, ...bpOverride } as Record<keyof StyleProps, string | undefined>;
 
   return (
-    <div className={styles.inspectorSection} role="tabpanel" aria-label="Style">
-      <div className={styles.inlineRow}>
-        <div className={styles.muted}>Editing: {props.breakpoint.toUpperCase()}</div>
-        <button
-          type="button"
-          className={styles.resetButton}
-          disabled={props.disabled || !canResetBreakpoint}
-          onClick={props.onResetBreakpoint}
-        >
-          Reset breakpoint
-        </button>
-      </div>
-
-      <StyleGroup
-        label="Layout"
-        fields={[
-          { key: "display", label: "Display", kind: "select", options: ["", "block", "flex"] },
-          { key: "flexDirection", label: "Direction", kind: "select", options: ["", "row", "column"] },
-          { key: "justifyContent", label: "Justify", kind: "select", options: ["", "flex-start", "center", "flex-end", "space-between"] },
-          { key: "alignItems", label: "Align", kind: "select", options: ["", "stretch", "flex-start", "center", "flex-end"] },
-          { key: "gap", label: "Gap", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
-        ]}
-        nodeStyle={style}
-        breakpoint={props.breakpoint}
+    <div className={styles.groupBody}>
+      <BoxModelEditor
+        paddingTop={effective.paddingTop}
+        paddingRight={effective.paddingRight}
+        paddingBottom={effective.paddingBottom}
+        paddingLeft={effective.paddingLeft}
+        marginTop={effective.marginTop}
+        marginRight={effective.marginRight}
+        marginBottom={effective.marginBottom}
+        marginLeft={effective.marginLeft}
+        blockLabel={props.blockLabel}
         disabled={props.disabled}
-        onPatchStyle={props.onPatchStyle}
+        onPatchStyle={(patch) => {
+          const keys = Object.keys(patch).join(",");
+          props.onPatchStyle(patch, keys);
+        }}
       />
-
-      <StyleGroup
-        label="Box"
+      {/* Also expose shorthand padding/margin fields for convenience */}
+      <StyleFieldGroup
         fields={[
-          { key: "padding", label: "Padding", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
-          { key: "margin", label: "Margin", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
+          { key: "padding", label: "Padding (shorthand)", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
+          { key: "margin", label: "Margin (shorthand)", kind: "length", tokens: getSpacingTokens().map((t) => t.value) },
           { key: "width", label: "Width", kind: "length" },
           { key: "maxWidth", label: "Max width", kind: "length" },
           { key: "minHeight", label: "Min height", kind: "length" },
         ]}
-        nodeStyle={style}
-        breakpoint={props.breakpoint}
-        disabled={props.disabled}
-        onPatchStyle={props.onPatchStyle}
-      />
-
-      <StyleGroup
-        label="Typography"
-        fields={[
-          { key: "fontFamily", label: "Font family", kind: "text", tokens: FONT_FAMILY_TOKENS.map((t) => t.value) },
-          { key: "fontSize", label: "Font size", kind: "text", tokens: FONT_SIZE_TOKENS.map((t) => t.value) },
-          { key: "fontWeight", label: "Font weight", kind: "text" },
-          { key: "lineHeight", label: "Line height", kind: "text" },
-          { key: "textAlign", label: "Align", kind: "select", options: ["", "left", "center", "right"] },
-          { key: "color", label: "Text color", kind: "color", tokens: COLOR_TOKENS.map((t) => t.value) },
-        ]}
-        nodeStyle={style}
-        breakpoint={props.breakpoint}
-        disabled={props.disabled}
-        onPatchStyle={props.onPatchStyle}
-      />
-
-      <StyleGroup
-        label="Visual"
-        fields={[
-          { key: "backgroundColor", label: "Background", kind: "color", tokens: COLOR_TOKENS.map((t) => t.value) },
-          { key: "borderRadius", label: "Radius", kind: "length" },
-          { key: "border", label: "Border", kind: "text" },
-          { key: "boxShadow", label: "Shadow", kind: "text" },
-          { key: "opacity", label: "Opacity", kind: "number" },
-        ]}
-        nodeStyle={style}
+        nodeStyle={props.nodeStyle}
         breakpoint={props.breakpoint}
         disabled={props.disabled}
         onPatchStyle={props.onPatchStyle}
@@ -463,8 +610,45 @@ function InspectorStyle(props: {
   );
 }
 
-function StyleGroup(props: {
-  label: string;
+// ─── ConstraintsSection ───────────────────────────────────────────────────────
+
+function ConstraintsSection(props: {
+  locked: boolean;
+  hidden: boolean;
+  disabled: boolean;
+  onPatch: (patch: Partial<import("@/editor-core").NodeConstraints>) => void;
+}) {
+  return (
+    <div className={styles.groupBody}>
+      <div className={styles.fieldRow}>
+        <label className={styles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={props.locked}
+            disabled={props.disabled}
+            onChange={(e) => props.onPatch({ locked: e.target.checked })}
+          />
+          <span className={styles.toggleLabel}>Locked</span>
+        </label>
+      </div>
+      <div className={styles.fieldRow}>
+        <label className={styles.toggleRow}>
+          <input
+            type="checkbox"
+            checked={props.hidden}
+            disabled={props.disabled}
+            onChange={(e) => props.onPatch({ hidden: e.target.checked })}
+          />
+          <span className={styles.toggleLabel}>Hidden</span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ─── StyleFieldGroup ──────────────────────────────────────────────────────────
+
+function StyleFieldGroup(props: {
   fields: Array<
     | { key: keyof StyleProps; label: string; kind: "length" | "text" | "color"; tokens?: string[] }
     | { key: keyof StyleProps; label: string; kind: "select"; options: string[] }
@@ -476,23 +660,22 @@ function StyleGroup(props: {
   onPatchStyle: (patch: Partial<StyleProps>, keyForCoalesce: string) => void;
 }) {
   return (
-    <div className={styles.group}>
-      <div className={styles.groupHeader}>{props.label}</div>
-      <div className={styles.groupBody}>
-        {props.fields.map((f) => (
-          <StyleField
-            key={String(f.key)}
-            nodeStyle={props.nodeStyle}
-            breakpoint={props.breakpoint}
-            disabled={props.disabled}
-            field={f as never}
-            onPatchStyle={props.onPatchStyle}
-          />
-        ))}
-      </div>
+    <div className={styles.groupBody}>
+      {props.fields.map((f) => (
+        <StyleField
+          key={String(f.key)}
+          nodeStyle={props.nodeStyle}
+          breakpoint={props.breakpoint}
+          disabled={props.disabled}
+          field={f as never}
+          onPatchStyle={props.onPatchStyle}
+        />
+      ))}
     </div>
   );
 }
+
+// ─── StyleField ───────────────────────────────────────────────────────────────
 
 function StyleField(props: {
   nodeStyle: import("@/editor-core").Responsive<StyleProps> | undefined;
@@ -512,14 +695,14 @@ function StyleField(props: {
   const inherited = getInheritedStyleValue(style, props.breakpoint, key);
 
   const bucket = props.breakpoint === "base" ? style?.base : style?.[props.breakpoint];
-
   const bucketValue = bucket ? (bucket as Record<string, unknown>)[key as string] : undefined;
 
   const resetDisabled = props.disabled || !overridden;
-
   const inheritedText = inherited === undefined ? "" : String(inherited);
-
   const fieldId = `style_${props.breakpoint}_${String(key)}`;
+
+  // Responsive override badges: show which non-base breakpoints have this key set
+  const bpBadges = (["sm", "md", "lg"] as const).filter((bp) => isStyleKeyOverridden(style, bp, key));
 
   const onReset = () => {
     props.onPatchStyle({ [key]: undefined } as Partial<StyleProps>, String(key));
@@ -548,6 +731,11 @@ function StyleField(props: {
           ) : inheritedText ? (
             <span className={styles.badgeSmall}>Inherited</span>
           ) : null}
+          {bpBadges.map((bp) => (
+            <span key={bp} className={styles.bpBadge}>
+              {bp.toUpperCase()}
+            </span>
+          ))}
         </div>
         <button type="button" className={styles.resetButton} disabled={resetDisabled} onClick={onReset}>
           Reset
@@ -623,6 +811,150 @@ function StyleField(props: {
   );
 }
 
+// ─── InspectorPropField ───────────────────────────────────────────────────────
+
+function InspectorPropField(props: {
+  nodeProps: Record<string, unknown>;
+  field: {
+    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info";
+    path: string;
+    label: string;
+    min?: number;
+    max?: number;
+    step?: number;
+    placeholder?: string;
+    required?: boolean;
+    message?: string;
+    options?: { label: string; value: string }[];
+    tokens?: string[];
+  };
+  disabled: boolean;
+  issues: ValidationIssue[];
+  onChange: (value: unknown) => void;
+  onReset: () => void;
+}) {
+  const key = propKeyFromPath(props.field.path);
+  const rawValue = key ? props.nodeProps[key] : undefined;
+
+  if (props.field.kind === "info") {
+    return (
+      <div className={styles.fieldRow}>
+        <div className={styles.fieldLabel}>{props.field.label}</div>
+        <div className={styles.muted}>{props.field.message ?? ""}</div>
+      </div>
+    );
+  }
+
+  const common = {
+    id: `field_${props.field.path}`,
+    disabled: props.disabled,
+    "aria-invalid": props.issues.some((i) => i.level === "error") || undefined,
+  } as const;
+
+  const resetDisabled = props.disabled || !key;
+
+  return (
+    <div className={styles.fieldRow}>
+      <div className={styles.fieldHeader}>
+        <label className={styles.fieldLabel} htmlFor={common.id}>
+          {props.field.label}
+          {props.field.required ? <span className={styles.required}>*</span> : null}
+        </label>
+        <button type="button" className={styles.resetButton} disabled={resetDisabled} onClick={props.onReset}>
+          Reset
+        </button>
+      </div>
+
+      {props.field.kind === "toggle" ? (
+        <label className={styles.toggleRow}>
+          <input {...common} type="checkbox" checked={Boolean(rawValue)} onChange={(e) => props.onChange(e.target.checked)} />
+          <span className={styles.toggleLabel}>Enabled</span>
+        </label>
+      ) : null}
+
+      {props.field.kind === "select" ? (
+        <select {...common} value={typeof rawValue === "string" ? rawValue : ""} onChange={(e) => props.onChange(e.target.value)}>
+          {(props.field.options ?? []).map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      {props.field.kind === "text" ? (
+        <input
+          {...common}
+          type={typeof rawValue === "number" ? "number" : "text"}
+          value={rawValue === undefined || rawValue === null ? "" : String(rawValue)}
+          placeholder={props.field.placeholder}
+          onChange={(e) => props.onChange(e.target.value)}
+        />
+      ) : null}
+
+      {props.field.kind === "number" ? (
+        <input
+          {...common}
+          type="number"
+          inputMode="numeric"
+          min={typeof props.field.min === "number" ? props.field.min : undefined}
+          max={typeof props.field.max === "number" ? props.field.max : undefined}
+          step={typeof props.field.step === "number" ? props.field.step : undefined}
+          value={typeof rawValue === "number" ? String(rawValue) : typeof rawValue === "string" ? rawValue : ""}
+          placeholder={props.field.placeholder}
+          onChange={(e) => {
+            const nextRaw = e.target.value;
+            if (!nextRaw.trim()) {
+              if (props.field.required) return;
+              props.onChange(undefined);
+              return;
+            }
+            const nextNum = Number(nextRaw);
+            if (!Number.isFinite(nextNum)) return;
+            let clamped = nextNum;
+            if (typeof props.field.min === "number") clamped = Math.max(props.field.min, clamped);
+            if (typeof props.field.max === "number") clamped = Math.min(props.field.max, clamped);
+            if (props.field.step === 1) clamped = Math.trunc(clamped);
+            props.onChange(clamped);
+          }}
+        />
+      ) : null}
+
+      {props.field.kind === "length" ? (
+        <TokenTextField
+          {...common}
+          value={typeof rawValue === "string" ? rawValue : ""}
+          placeholder={props.field.placeholder}
+          tokens={[...(props.field.tokens ?? []), ...getSpacingTokens().map((t) => t.value)]}
+          onChange={(v) => props.onChange(v)}
+        />
+      ) : null}
+
+      {props.field.kind === "color" ? (
+        <TokenTextField
+          {...common}
+          value={typeof rawValue === "string" ? rawValue : ""}
+          placeholder={props.field.placeholder}
+          tokens={COLOR_TOKENS.map((t) => t.value)}
+          onChange={(v) => props.onChange(v)}
+        />
+      ) : null}
+
+      {props.issues.length > 0 ? (
+        <div className={styles.fieldIssues} role="alert">
+          {props.issues.map((i, idx) => (
+            <div key={idx} className={i.level === "error" ? styles.issueError : styles.issueWarning}>
+              {i.message}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── TokenTextField ───────────────────────────────────────────────────────────
+
 function TokenTextField(props: {
   id?: string;
   disabled?: boolean;
@@ -679,6 +1011,8 @@ function TokenTextField(props: {
     </div>
   );
 }
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function propKeyFromPath(path: string): string | null {
   if (!path.startsWith("props.")) return null;

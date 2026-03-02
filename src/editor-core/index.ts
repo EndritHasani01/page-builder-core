@@ -14,6 +14,7 @@ export type {
   InspectorField,
   InspectorGroup,
   InspectorSchema,
+  InspectorSection,
   Node,
   NodeByType,
   NodeConstraints,

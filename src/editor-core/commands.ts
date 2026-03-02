@@ -11,6 +11,7 @@ import type {
   Breakpoint,
   Document,
   Node,
+  NodeConstraints,
   NodeId,
   NodePropsByType,
   NodeType,
@@ -46,7 +47,8 @@ export type DocCommand =
         typography?: Partial<Theme["typography"]>;
         spacing?: Partial<Theme["spacing"]>;
       };
-    };
+    }
+  | { type: "UPDATE_CONSTRAINTS"; nodeId: NodeId; patch: Partial<NodeConstraints> };
 
 export type ApplyDocCommandResult = {
   doc: Document;
@@ -807,6 +809,27 @@ function applyUpdateTheme(
   }
 }
 
+function applyUpdateConstraints(
+  doc: DraftDoc,
+  ctx: ApplyCtx,
+  cmd: Extract<DocCommand, { type: "UPDATE_CONSTRAINTS" }>,
+) {
+  const node = doc.nodes[cmd.nodeId];
+  if (!node) {
+    pushIssue(ctx, { nodeId: cmd.nodeId, level: "error", message: "Node does not exist." });
+    return;
+  }
+  if (!cmd.patch || typeof cmd.patch !== "object") {
+    pushIssue(ctx, { nodeId: node.id, level: "error", message: "Constraints patch must be an object." });
+    return;
+  }
+  if (!node.constraints) node.constraints = {};
+  for (const [key, value] of Object.entries(cmd.patch)) {
+    if (PROHIBITED_KEYS.has(key)) continue;
+    (node.constraints as Record<string, unknown>)[key] = value;
+  }
+}
+
 function cleanupEmptyStyle(node: Draft<Node>) {
   const style = node.style;
   if (!style) return;
@@ -861,6 +884,9 @@ export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: Appl
       return;
     case "UPDATE_THEME":
       applyUpdateTheme(doc, ctx, cmd);
+      return;
+    case "UPDATE_CONSTRAINTS":
+      applyUpdateConstraints(doc, ctx, cmd);
       return;
     default: {
       const _exhaustive: never = cmd;

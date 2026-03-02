@@ -142,8 +142,6 @@ export function getNodeLabel(doc: Document, node: Node): string {
       return "Spacer";
     case "divider":
       return "Divider";
-    default:
-      return node.type;
   }
 }
 

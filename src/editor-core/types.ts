@@ -21,7 +21,15 @@ export type StyleProps = {
   gap?: string;
 
   padding?: string;
+  paddingTop?: string;
+  paddingRight?: string;
+  paddingBottom?: string;
+  paddingLeft?: string;
   margin?: string;
+  marginTop?: string;
+  marginRight?: string;
+  marginBottom?: string;
+  marginLeft?: string;
   width?: string;
   maxWidth?: string;
   minHeight?: string;
@@ -212,8 +220,11 @@ export type InspectorField =
   | { kind: "toggle"; path: string; label: string; required?: boolean }
   | { kind: "info"; path: string; label: string; message: string };
 
+export type InspectorSection = "content" | "layout" | "spacing" | "typography" | "appearance" | "constraints";
+
 export type InspectorGroup = {
   label: string;
+  section?: InspectorSection;
   fields: InspectorField[];
 };
 
