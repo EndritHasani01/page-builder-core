@@ -173,12 +173,22 @@ export const blockRegistry: BlockRegistry = {
   text: {
     type: "text",
     label: "Text",
-    defaultProps: { text: "Text", as: "p" },
+    defaultProps: { content: [{ text: "Text" }], as: "p" },
     allowedChildren: [],
     inspector: {
       type: "text",
       groups: [
-        { label: "Content", fields: [{ kind: "text", path: "props.text", label: "Text", required: true }] },
+        {
+          label: "Content",
+          fields: [
+            {
+              kind: "info",
+              path: "_richtext",
+              label: "Content",
+              message: "Edit text directly on the canvas by double-clicking.",
+            },
+          ],
+        },
         {
           label: "Semantics",
           fields: [
@@ -194,20 +204,42 @@ export const blockRegistry: BlockRegistry = {
                 { label: "span", value: "span" },
               ],
             },
+            {
+              kind: "select",
+              path: "props.listType",
+              label: "List type",
+              options: [
+                { label: "Unordered (ul)", value: "ul" },
+                { label: "Ordered (ol)", value: "ol" },
+              ],
+            },
           ],
         },
       ],
     },
     validate(node) {
-      if (node.props.text.trim()) return [];
-      return [
-        {
+      const issues: ValidationIssue[] = [];
+      const plain = node.props.content.map((s) => s.text).join("").trim();
+      if (!plain) {
+        issues.push({
           nodeId: node.id,
           level: "warning",
           message: "Text is empty.",
-          fieldPath: "props.text",
-        },
-      ];
+          fieldPath: "props.content",
+        });
+      }
+      for (const seg of node.props.content) {
+        if (seg.link?.href && !isProbablySafeUrl(seg.link.href)) {
+          issues.push({
+            nodeId: node.id,
+            level: "error",
+            message: `Inline link URL is not allowed: ${seg.link.href}`,
+            fieldPath: "props.content",
+          });
+          break;
+        }
+      }
+      return issues;
     },
   },
 

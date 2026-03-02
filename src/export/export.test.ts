@@ -9,7 +9,7 @@ describe("export", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const { json } = exportDocumentToJson(doc);
 
-    expect(json).toContain(`"schemaVersion": "1.0.0"`);
+    expect(json).toContain(`"schemaVersion": "1.1.0"`);
     expect(json).toContain(`\n  "meta": {`);
     expect(json.endsWith("\n")).toBe(false);
   });
@@ -54,7 +54,7 @@ describe("export", () => {
     const hiddenText = createNode("text", {
       idFactory,
       parentId: "column_1",
-      props: { text: "Secret" },
+      props: { content: [{ text: "Secret" }] },
       constraints: { hidden: true },
     });
 

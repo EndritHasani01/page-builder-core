@@ -97,11 +97,11 @@ describe("applyCommand", () => {
     doc.nodes[lockedText.id] = lockedText;
     doc.nodes.column_1.children = [lockedText.id];
 
-    const res = applyCommand(doc, { type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "Nope" } });
+    const res = applyCommand(doc, { type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "Nope" }] } });
     expect(res.changed).toBe(false);
     expect(res.doc.nodes.text_1?.type).toBe("text");
     if (res.doc.nodes.text_1?.type === "text") {
-      expect(res.doc.nodes.text_1.props.text).toBe("Text");
+      expect(res.doc.nodes.text_1.props.content[0]?.text).toBe("Text");
     }
     expect(res.issues.some((i) => i.message.toLowerCase().includes("locked"))).toBe(true);
   });

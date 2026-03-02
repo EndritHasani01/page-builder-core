@@ -1,6 +1,6 @@
 import { deepClone, isProbablySafeUrl, type Document, type NodeId } from "@/editor-core";
 
-type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href";
+type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link";
 
 type UnsafeUrl = {
   nodeId: NodeId;
@@ -28,6 +28,21 @@ function listUnsafeUrls(doc: Document): UnsafeUrl[] {
       const href = (n.props as { href?: unknown }).href;
       if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
         unsafe.push({ nodeId: n.id, kind: "button.href", value: href });
+      }
+    }
+
+    if (n.type === "text") {
+      const content = (n.props as { content?: unknown }).content;
+      if (Array.isArray(content)) {
+        for (const seg of content) {
+          const segRecord = seg as Record<string, unknown>;
+          const link = segRecord?.link as Record<string, unknown> | undefined;
+          const href = link?.href as string | undefined;
+          if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
+            unsafe.push({ nodeId: n.id, kind: "text.link", value: href });
+            break; // one warning per node is enough
+          }
+        }
       }
     }
   }
@@ -85,6 +100,22 @@ export function sanitizeDocumentForHtmlExport(doc: Document): { doc: Document; w
     }
     if (u.kind === "button.href" && node.type === "button") {
       (node.props as Record<string, unknown>).href = "";
+      continue;
+    }
+    if (u.kind === "text.link" && node.type === "text") {
+      const content = (node.props as Record<string, unknown>).content as Array<Record<string, unknown>>;
+      if (Array.isArray(content)) {
+        (node.props as Record<string, unknown>).content = content.map((seg) => {
+          const link = seg.link as Record<string, unknown> | undefined;
+          const href = link?.href as string | undefined;
+          if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
+            const { link: _removed, ...rest } = seg;
+            void _removed;
+            return rest;
+          }
+          return seg;
+        });
+      }
       continue;
     }
   }

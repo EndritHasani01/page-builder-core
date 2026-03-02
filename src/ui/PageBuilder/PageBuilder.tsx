@@ -9,6 +9,7 @@ import { editorStore, useEditorStore } from "@/store";
 import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
 import { Drawer } from "./components/Overlays";
+import { LayerTree } from "./components/LayerTree";
 import { PageBuilderCanvas } from "./components/PageBuilderCanvas";
 import { PageBuilderDialogs } from "./components/PageBuilderDialogs";
 import { PageBuilderInspector } from "./components/PageBuilderInspector";
@@ -33,6 +34,7 @@ export function PageBuilder() {
   const persistence = usePageBuilderPersistence({ pushToast });
 
   const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
+  const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
   const [dialog, setDialog] = useState<PageBuilderDialog>(null);
   const [mobilePanel, setMobilePanel] = useState<PageBuilderMobilePanel>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -150,9 +152,28 @@ export function PageBuilder() {
         <main className={styles.main} data-narrow={isNarrow ? "true" : "false"}>
           {!isNarrow ? (
             <aside className={styles.panel} aria-label="Palette">
-              <div className={styles.panelTitle}>Palette</div>
+              <div className={styles.leftPanelTabBar}>
+                <button
+                  type="button"
+                  className={leftTab === "blocks" ? styles.tabButtonActive : styles.tabButton}
+                  onClick={() => setLeftTab("blocks")}
+                >
+                  Blocks
+                </button>
+                <button
+                  type="button"
+                  className={leftTab === "layers" ? styles.tabButtonActive : styles.tabButton}
+                  onClick={() => setLeftTab("layers")}
+                >
+                  Layers
+                </button>
+              </div>
               <div className={styles.panelBody}>
-                <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+                {leftTab === "blocks" ? (
+                  <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+                ) : (
+                  <LayerTree canvasBodyRef={canvasBodyRef} />
+                )}
               </div>
             </aside>
           ) : null}
@@ -178,8 +199,28 @@ export function PageBuilder() {
         </main>
 
         {isNarrow && mobilePanel === "palette" ? (
-          <Drawer title="Palette" side="left" onClose={() => setMobilePanel(null)}>
-            <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+          <Drawer title="Blocks & Layers" side="left" onClose={() => setMobilePanel(null)}>
+            <div className={styles.leftPanelTabBar}>
+              <button
+                type="button"
+                className={leftTab === "blocks" ? styles.tabButtonActive : styles.tabButton}
+                onClick={() => setLeftTab("blocks")}
+              >
+                Blocks
+              </button>
+              <button
+                type="button"
+                className={leftTab === "layers" ? styles.tabButtonActive : styles.tabButton}
+                onClick={() => setLeftTab("layers")}
+              >
+                Layers
+              </button>
+            </div>
+            {leftTab === "blocks" ? (
+              <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+            ) : (
+              <LayerTree canvasBodyRef={canvasBodyRef} />
+            )}
           </Drawer>
         ) : null}
 

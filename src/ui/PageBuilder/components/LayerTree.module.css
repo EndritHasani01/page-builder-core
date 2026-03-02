@@ -1,0 +1,150 @@
+.tree {
+  font-size: 12px;
+  user-select: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding-right: 4px;
+  position: relative;
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.row[data-selected] {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+}
+
+.row[data-dragging] {
+  opacity: 0.35;
+}
+
+.row[data-drop-before]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 999px;
+  z-index: 1;
+}
+
+.row[data-drop-after]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 999px;
+  z-index: 1;
+}
+
+.row[data-drop-inside] {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-primary) 50%, transparent);
+  outline-offset: -1px;
+}
+
+.row[data-drop-invalid] {
+  opacity: 0.45;
+}
+
+.chevron {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+}
+
+.chevron:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #6b7280;
+  background: color-mix(in srgb, var(--color-bg) 88%, #d1d5db);
+  border-radius: 3px;
+  letter-spacing: -0.5px;
+}
+
+.row[data-selected] .icon {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.constraint {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: #9ca3af;
+  font-size: 10px;
+}
+
+.dragHandle {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: grab;
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.row:hover .dragHandle {
+  opacity: 1;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:disabled {
+  display: none;
+}

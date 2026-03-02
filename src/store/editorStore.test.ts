@@ -13,7 +13,7 @@ describe("editor store", () => {
       parentId: "column_1",
       nodeType: "text",
       id: "text_1",
-      initialProps: { text: "Hello", as: "p" },
+      initialProps: { content: [{ text: "Hello" }], as: "p" },
     });
 
     expect(store.getState().doc.nodes.text_1?.type).toBe("text");
@@ -42,18 +42,18 @@ describe("editor store", () => {
       parentId: "column_1",
       nodeType: "text",
       id: "text_1",
-      initialProps: { text: "A", as: "p" },
+      initialProps: { content: [{ text: "A" }], as: "p" },
     });
 
     store.getState().dispatch(
-      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "AB" } },
+      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "AB" }] } },
       { coalesceKey: "text_1:props.text", historyLabel: "Type" },
     );
     expect(store.getState().undoStack.length).toBe(2);
 
     vi.setSystemTime(new Date("2026-02-18T12:00:00.200Z"));
     store.getState().dispatch(
-      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "ABC" } },
+      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "ABC" }] } },
       { coalesceKey: "text_1:props.text", historyLabel: "Type" },
     );
 
@@ -62,12 +62,12 @@ describe("editor store", () => {
     const nodeAfter = store.getState().doc.nodes.text_1;
     expect(nodeAfter?.type).toBe("text");
     if (nodeAfter?.type === "text") {
-      expect(nodeAfter.props.text).toBe("ABC");
+      expect(nodeAfter.props.content[0]?.text).toBe("ABC");
     }
 
     vi.setSystemTime(new Date("2026-02-18T12:00:01.000Z"));
     store.getState().dispatch(
-      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "ABCD" } },
+      { type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "ABCD" }] } },
       { coalesceKey: "text_1:props.text", historyLabel: "Type" },
     );
     expect(store.getState().undoStack.length).toBe(3);
@@ -84,12 +84,12 @@ describe("editor store", () => {
       parentId: "column_1",
       nodeType: "text",
       id: "text_1",
-      initialProps: { text: "Hello", as: "p" },
+      initialProps: { content: [{ text: "Hello" }], as: "p" },
     });
     const undoBefore = store.getState().undoStack.length;
 
     store.getState().beginTransaction("Composite edit");
-    store.getState().dispatch({ type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "Hello!" } });
+    store.getState().dispatch({ type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "Hello!" }] } });
     store.getState().dispatch({
       type: "UPDATE_STYLE",
       nodeId: "text_1",
@@ -102,14 +102,14 @@ describe("editor store", () => {
     const nodeAfterTxn = store.getState().doc.nodes.text_1;
     expect(nodeAfterTxn?.type).toBe("text");
     if (nodeAfterTxn?.type === "text") {
-      expect(nodeAfterTxn.props.text).toBe("Hello!");
+      expect(nodeAfterTxn.props.content[0]?.text).toBe("Hello!");
     }
 
     store.getState().undo();
     const nodeAfterUndo = store.getState().doc.nodes.text_1;
     expect(nodeAfterUndo?.type).toBe("text");
     if (nodeAfterUndo?.type === "text") {
-      expect(nodeAfterUndo.props.text).toBe("Hello");
+      expect(nodeAfterUndo.props.content[0]?.text).toBe("Hello");
       expect(nodeAfterUndo.style?.base.fontWeight).toBeUndefined();
     }
   });
@@ -124,7 +124,7 @@ describe("editor store", () => {
       parentId: "column_1",
       nodeType: "text",
       id: "text_1",
-      initialProps: { text: "Copy me", as: "p" },
+      initialProps: { content: [{ text: "Copy me" }], as: "p" },
     });
     store.getState().dispatch({ type: "SET_SELECTED", nodeId: "text_1" });
 

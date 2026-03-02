@@ -95,10 +95,31 @@ const ContainerPropsSchema = z
   })
   .strict();
 
-const TextPropsSchema = z
+const InlineLinkSchema = z
+  .object({
+    href: z.string(),
+  })
+  .strict();
+
+const InlineSegmentSchema = z
   .object({
     text: z.string(),
+    bold: z.boolean().optional(),
+    italic: z.boolean().optional(),
+    underline: z.boolean().optional(),
+    strikethrough: z.boolean().optional(),
+    code: z.boolean().optional(),
+    link: InlineLinkSchema.optional(),
+  })
+  .strict();
+
+const RichContentSchema = z.array(InlineSegmentSchema).min(1);
+
+const TextPropsSchema = z
+  .object({
+    content: RichContentSchema,
     as: z.enum(["p", "h1", "h2", "h3", "span"]),
+    listType: z.enum(["ul", "ol"]).optional(),
   })
   .strict();
 

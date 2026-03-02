@@ -29,7 +29,7 @@ describe("editor-core", () => {
 
     const doc = {
       meta: {
-        schemaVersion: "1.0.0" as const,
+        schemaVersion: "1.1.0" as const,
         createdAt: "2026-02-18T12:00:00.000Z",
         updatedAt: "2026-02-18T12:00:00.000Z",
         title: "Test",
@@ -54,7 +54,7 @@ describe("editor-core", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory({ startAt: { text: 10, divider: 10 } });
 
-    const orphan = createNode("text", { idFactory, parentId: null, props: { text: "Orphan" } });
+    const orphan = createNode("text", { idFactory, parentId: null, props: { content: [{ text: "Orphan" }] } });
     doc.nodes[orphan.id] = orphan;
 
     // Add a broken child id reference that does not exist in doc.nodes.
@@ -69,7 +69,7 @@ describe("editor-core", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory({ startAt: { text: 10 } });
 
-    const shared = createNode("text", { idFactory, parentId: "column_1", props: { text: "Shared" } });
+    const shared = createNode("text", { idFactory, parentId: "column_1", props: { content: [{ text: "Shared" }] } });
     doc.nodes[shared.id] = shared;
     doc.nodes.column_1.children = [shared.id];
     doc.nodes.column_2.children = [shared.id];

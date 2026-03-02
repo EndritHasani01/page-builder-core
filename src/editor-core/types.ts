@@ -80,9 +80,22 @@ export type ContainerProps = {
   as: "div" | "main" | "header" | "footer";
 };
 
-export type TextProps = {
+export type InlineSegment = {
   text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  code?: boolean;
+  link?: { href: string };
+};
+
+export type RichContent = InlineSegment[];
+
+export type TextProps = {
+  content: RichContent;
   as: "p" | "h1" | "h2" | "h3" | "span";
+  listType?: "ul" | "ol";
 };
 
 export type ImageProps = {
@@ -196,7 +209,8 @@ export type InspectorField =
     }
   | { kind: "color"; path: string; label: string; required?: boolean }
   | { kind: "length"; path: string; label: string; tokens?: string[]; required?: boolean }
-  | { kind: "toggle"; path: string; label: string; required?: boolean };
+  | { kind: "toggle"; path: string; label: string; required?: boolean }
+  | { kind: "info"; path: string; label: string; message: string };
 
 export type InspectorGroup = {
   label: string;

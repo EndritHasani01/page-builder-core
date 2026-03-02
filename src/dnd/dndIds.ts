@@ -35,3 +35,10 @@ export function parseContainerDropId(id: unknown): NodeId | null {
   return rest ? (rest as NodeId) : null;
 }
 
+export function parseTreeRowDropId(id: unknown): NodeId | null {
+  if (typeof id !== "string") return null;
+  if (!id.startsWith("tree-row:")) return null;
+  const rest = id.slice("tree-row:".length);
+  return rest ? (rest as NodeId) : null;
+}
+

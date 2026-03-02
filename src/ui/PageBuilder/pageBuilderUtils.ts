@@ -1,4 +1,4 @@
-import type { Document, IdFactory, NodeId, NodeType, Subtree } from "@/editor-core";
+import type { Document, IdFactory, Node, NodeId, NodeType, Subtree } from "@/editor-core";
 import { blockRegistry, createNode } from "@/editor-core";
 
 export function buildPaletteSubtree(nodeType: NodeType, idFactory: IdFactory): Subtree {
@@ -108,6 +108,43 @@ export function describeNodeForA11y(doc: Document, nodeId: NodeId): string {
   }
 
   return label;
+}
+
+export function getNodeLabel(doc: Document, node: Node): string {
+  switch (node.type) {
+    case "text": {
+      const raw = node.props.content.map((s) => s.text).join("").trim();
+      return raw ? raw.slice(0, 30) : "Text";
+    }
+    case "image":
+      return node.props.alt.trim() || "Image";
+    case "button":
+      return node.props.label.trim() || "Button";
+    case "columns":
+      return `Columns (${node.props.columns})`;
+    case "column": {
+      if (node.parentId) {
+        const parent = doc.nodes[node.parentId];
+        if (parent?.type === "columns") {
+          const idx = parent.children.indexOf(node.id);
+          if (idx >= 0) return `Column ${idx + 1}`;
+        }
+      }
+      return "Column";
+    }
+    case "section":
+      return "Section";
+    case "container":
+      return "Container";
+    case "page":
+      return node.props.title.trim() || "Page";
+    case "spacer":
+      return "Spacer";
+    case "divider":
+      return "Divider";
+    default:
+      return node.type;
+  }
 }
 
 export function buildSelectionBreadcrumb(doc: Document, selectedId: NodeId | null): string {

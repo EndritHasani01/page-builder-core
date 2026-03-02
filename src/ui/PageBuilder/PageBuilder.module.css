@@ -157,6 +157,14 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.leftPanelTabBar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .panelBody {
   padding: 12px;
   overflow: auto;

@@ -10,6 +10,7 @@ export type {
   Document,
   DocumentMeta,
   ImageProps,
+  InlineSegment,
   InspectorField,
   InspectorGroup,
   InspectorSchema,
@@ -21,6 +22,7 @@ export type {
   NodeType,
   PageProps,
   Responsive,
+  RichContent,
   SchemaVersion,
   SectionProps,
   SpacerProps,
@@ -77,3 +79,11 @@ export {
 } from "./commands";
 
 export { collectSubtreeIds, getChildIndex, getNode, getParent, wouldCreateCycle } from "./graph";
+
+export {
+  buildSegmentDomNode,
+  domToRichContent,
+  mergeAdjacentSegments,
+  plainTextToRichContent,
+  richContentToPlainText,
+} from "./richTextUtils";

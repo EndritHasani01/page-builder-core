@@ -13,4 +13,5 @@ export {
   parseContainerDropId,
   parseNodeDragId,
   parsePaletteDragId,
+  parseTreeRowDropId,
 } from "./dndIds";

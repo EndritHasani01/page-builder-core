@@ -227,7 +227,7 @@ function InspectorContent(props: {
 function InspectorPropField(props: {
   nodeProps: Record<string, unknown>;
   field: {
-    kind: "text" | "number" | "select" | "color" | "length" | "toggle";
+    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info";
     path: string;
     label: string;
     min?: number;
@@ -235,6 +235,7 @@ function InspectorPropField(props: {
     step?: number;
     placeholder?: string;
     required?: boolean;
+    message?: string;
     options?: { label: string; value: string }[];
     tokens?: string[];
   };
@@ -245,6 +246,16 @@ function InspectorPropField(props: {
 }) {
   const key = propKeyFromPath(props.field.path);
   const rawValue = key ? props.nodeProps[key] : undefined;
+
+  // Info fields are read-only notices with no input controls.
+  if (props.field.kind === "info") {
+    return (
+      <div className={styles.fieldRow}>
+        <div className={styles.fieldLabel}>{props.field.label}</div>
+        <div className={styles.muted}>{props.field.message ?? ""}</div>
+      </div>
+    );
+  }
 
   const common = {
     id: `field_${props.field.path}`,

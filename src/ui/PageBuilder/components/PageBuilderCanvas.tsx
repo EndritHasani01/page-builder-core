@@ -1,7 +1,7 @@
 import type { MouseEvent, RefObject } from "react";
 import { useCallback, useId, useMemo, useState } from "react";
 
-import type { NodeId } from "@/editor-core";
+import type { NodeId, RichContent } from "@/editor-core";
 import { RenderDocument } from "@/renderer";
 import { useEditorStore } from "@/store";
 
@@ -74,12 +74,12 @@ export function PageBuilderCanvas(props: {
   );
 
   const onCommitInlineTextEdit = useCallback(
-    (nodeId: NodeId, nextText: string) => {
+    (nodeId: NodeId, nextContent: RichContent) => {
       if (isPreview) return;
       setInlineTextEditingId(null);
       dispatch(
-        { type: "UPDATE_PROPS", nodeId, patch: { text: nextText } },
-        { historyLabel: "Edit", coalesceKey: `props:${nodeId}:text:inline` },
+        { type: "UPDATE_PROPS", nodeId, patch: { content: nextContent } },
+        { historyLabel: "Edit", coalesceKey: `props:${nodeId}:content:inline` },
       );
       focusCanvasFrame();
     },

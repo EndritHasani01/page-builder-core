@@ -1,13 +1,15 @@
 import type { CSSProperties, ClipboardEvent, KeyboardEvent, MouseEvent } from "react";
-import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
+import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
-import type { Breakpoint, Document, Node, NodeId } from "@/editor-core";
-import { blockRegistry, isProbablySafeUrl } from "@/editor-core";
+import type { Breakpoint, Document, Node, NodeId, RichContent } from "@/editor-core";
+import { blockRegistry, buildSegmentDomNode, domToRichContent, isProbablySafeUrl } from "@/editor-core";
 
 import { containerDropId, nodeDragId, type DragPayload } from "@/dnd";
+
+import { FloatingToolbar } from "@/ui/PageBuilder/components/FloatingToolbar";
 
 import styles from "./RenderDocument.module.css";
 import { mergeCss, resolveResponsiveStyle, stylePropsToCss, themeToCssVars } from "./renderUtils";
@@ -31,7 +33,7 @@ export type RenderDocumentProps = {
 
   inlineTextEditingId?: NodeId | null;
   onStartInlineTextEdit?: (nodeId: NodeId) => void;
-  onCommitInlineTextEdit?: (nodeId: NodeId, nextText: string) => void;
+  onCommitInlineTextEdit?: (nodeId: NodeId, nextContent: RichContent) => void;
   onCancelInlineTextEdit?: (nodeId: NodeId) => void;
 };
 
@@ -326,7 +328,7 @@ function renderNode(args: {
 
   inlineTextEditingId?: NodeId | null;
   onStartInlineTextEdit?: (nodeId: NodeId) => void;
-  onCommitInlineTextEdit?: (nodeId: NodeId, nextText: string) => void;
+  onCommitInlineTextEdit?: (nodeId: NodeId, nextContent: RichContent) => void;
   onCancelInlineTextEdit?: (nodeId: NodeId) => void;
 }) {
   const { node, mode, breakpoint } = args;
@@ -451,8 +453,14 @@ function renderNode(args: {
 
     case "text": {
       const Tag = node.props.as;
+      const richNodes = renderRichContent(node.props.content, args.disableNavigation);
+
       if (mode !== "editor") {
-        return <Tag style={args.nodeStyle}>{node.props.text}</Tag>;
+        if (node.props.listType) {
+          const ListTag = node.props.listType;
+          return <ListTag style={args.nodeStyle}><li>{richNodes}</li></ListTag>;
+        }
+        return <Tag style={args.nodeStyle}>{richNodes}</Tag>;
       }
 
       const isEditing = args.inlineTextEditingId === node.id;
@@ -471,6 +479,16 @@ function renderNode(args: {
           ? [styles.wrapped, styles.wrappedInline].join(" ")
           : styles.wrapped;
 
+      const staticContent = node.props.listType ? (
+        <node.props.listType className={args.chromeClassName} style={args.nodeStyle} onDoubleClick={startInlineEdit}>
+          <li>{richNodes}</li>
+        </node.props.listType>
+      ) : (
+        <Tag className={args.chromeClassName} style={args.nodeStyle} onDoubleClick={startInlineEdit}>
+          {richNodes}
+        </Tag>
+      );
+
       return (
         <div
           {...args.dataAttrs}
@@ -485,16 +503,14 @@ function renderNode(args: {
           {isEditing ? (
             <InlineEditableText
               tag={Tag}
-              text={node.props.text}
+              content={node.props.content}
               className={args.chromeClassName}
               style={args.nodeStyle}
-              onCommit={(nextText) => args.onCommitInlineTextEdit?.(node.id, nextText)}
+              onCommit={(nextContent) => args.onCommitInlineTextEdit?.(node.id, nextContent)}
               onCancel={() => args.onCancelInlineTextEdit?.(node.id)}
             />
           ) : (
-            <Tag className={args.chromeClassName} style={args.nodeStyle} onDoubleClick={startInlineEdit}>
-              {node.props.text}
-            </Tag>
+            staticContent
           )}
         </div>
       );
@@ -686,26 +702,67 @@ function renderNode(args: {
   }
 }
 
+/**
+ * Renders a RichContent array as React nodes. Each segment is wrapped in
+ * appropriate inline elements (strong, em, u, s, code, a) for its active marks.
+ */
+function renderRichContent(content: RichContent, disableNavigation?: boolean): React.ReactNode {
+  return content.map((seg, i) => {
+    let inner: React.ReactNode = seg.text;
+    if (seg.code) inner = <code>{inner}</code>;
+    if (seg.link?.href && isProbablySafeUrl(seg.link.href)) {
+      const href = seg.link.href;
+      inner = (
+        <a
+          href={href}
+          onClick={disableNavigation ? (e) => e.preventDefault() : undefined}
+        >
+          {inner}
+        </a>
+      );
+    }
+    if (seg.strikethrough) inner = <s>{inner}</s>;
+    if (seg.underline) inner = <u>{inner}</u>;
+    if (seg.italic) inner = <em>{inner}</em>;
+    if (seg.bold) inner = <strong>{inner}</strong>;
+    return <Fragment key={i}>{inner}</Fragment>;
+  });
+}
+
+/**
+ * Inline contentEditable editor for text nodes. Initializes DOM content from
+ * a RichContent array via useLayoutEffect (not React children) to avoid
+ * reconciliation conflicts during editing. Reads back structured content
+ * via domToRichContent on commit.
+ *
+ * The FloatingToolbar component (rendered as a portal sibling) intercepts
+ * selectionchange events and applies formatting via document.execCommand.
+ * This is the one place in the project where inline scripts / DOM mutation
+ * outside React's control are intentional and safe — the resulting content
+ * goes through domToRichContent normalization before being stored.
+ */
 function InlineEditableText(props: {
   tag: "p" | "h1" | "h2" | "h3" | "span";
-  text: string;
+  content: RichContent;
   className?: string;
   style?: CSSProperties;
-  onCommit: (nextText: string) => void;
+  onCommit: (nextContent: RichContent) => void;
   onCancel: () => void;
 }) {
   const elRef = useRef<HTMLElement | null>(null);
   const endedRef = useRef(false);
 
   const endIfNeeded = useCallback(() => {
+    if (endedRef.current) return;
     endedRef.current = true;
   }, []);
 
   const commit = useCallback(() => {
     if (endedRef.current) return;
     endIfNeeded();
-    const nextText = elRef.current?.textContent ?? "";
-    props.onCommit(nextText);
+    const el = elRef.current;
+    const nextContent = el ? domToRichContent(el) : [{ text: "" }];
+    props.onCommit(nextContent);
   }, [endIfNeeded, props]);
 
   const cancel = useCallback(() => {
@@ -717,6 +774,14 @@ function InlineEditableText(props: {
   useLayoutEffect(() => {
     const el = elRef.current;
     if (!el) return;
+
+    // Initialize DOM from rich content. React does not manage this element's
+    // children — we populate imperatively and let the user edit freely.
+    el.innerHTML = "";
+    for (const seg of props.content) {
+      el.appendChild(buildSegmentDomNode(seg));
+    }
+
     try {
       el.focus({ preventScroll: true });
     } catch {
@@ -730,31 +795,41 @@ function InlineEditableText(props: {
     range.collapse(false);
     sel.removeAllRanges();
     sel.addRange(range);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only runs on mount; content is stable during editing
 
-  const onPastePlainText = useCallback((e: ClipboardEvent<HTMLElement>) => {
-    const text = e.clipboardData.getData("text/plain");
+  const onPaste = useCallback((e: ClipboardEvent<HTMLElement>) => {
     e.preventDefault();
-
     const el = elRef.current;
     if (!el) return;
 
+    const html = e.clipboardData.getData("text/html");
+    const plain = e.clipboardData.getData("text/plain");
+
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0 || !el.contains(sel.anchorNode)) {
-      el.textContent = `${el.textContent ?? ""}${text}`;
-      return;
+    const hasSelInEl = sel && sel.rangeCount > 0 && el.contains(sel.anchorNode);
+
+    if (hasSelInEl) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+
+      const frag = document.createDocumentFragment();
+      if (html) {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = html;
+        const segs = domToRichContent(tmp);
+        for (const seg of segs) frag.appendChild(buildSegmentDomNode(seg));
+      } else {
+        frag.appendChild(document.createTextNode(plain));
+      }
+
+      range.insertNode(frag);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      el.appendChild(document.createTextNode(plain));
     }
-
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-
-    const node = document.createTextNode(text);
-    range.insertNode(node);
-    range.setStartAfter(node);
-    range.collapse(true);
-
-    sel.removeAllRanges();
-    sel.addRange(range);
   }, []);
 
   const onKeyDown = useCallback(
@@ -777,17 +852,18 @@ function InlineEditableText(props: {
 
   const Tag = props.tag;
   return (
-    <Tag
-      ref={elRef as never}
-      className={props.className}
-      style={props.style}
-      contentEditable={true}
-      suppressContentEditableWarning={true}
-      onBlur={commit}
-      onKeyDown={onKeyDown}
-      onPaste={onPastePlainText}
-    >
-      {props.text}
-    </Tag>
+    <>
+      <Tag
+        ref={elRef as never}
+        className={props.className}
+        style={props.style}
+        contentEditable={true}
+        suppressContentEditableWarning={true}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+        onPaste={onPaste}
+      />
+      <FloatingToolbar editingRef={elRef} />
+    </>
   );
 }
