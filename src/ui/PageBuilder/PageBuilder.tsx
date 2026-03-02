@@ -9,6 +9,7 @@ import { editorStore, useEditorStore } from "@/store";
 import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
 import { Drawer } from "./components/Overlays";
+import { DesignTokensPanel } from "./components/DesignTokensPanel";
 import { LayerTree } from "./components/LayerTree";
 import { PageBuilderCanvas } from "./components/PageBuilderCanvas";
 import { PageBuilderDialogs } from "./components/PageBuilderDialogs";
@@ -35,6 +36,7 @@ export function PageBuilder() {
 
   const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
   const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
+  const [themeOpen, setThemeOpen] = useState(false);
   const [dialog, setDialog] = useState<PageBuilderDialog>(null);
   const [mobilePanel, setMobilePanel] = useState<PageBuilderMobilePanel>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -142,6 +144,8 @@ export function PageBuilder() {
           autosaveEnabled={persistence.autosaveEnabled}
           persistence={persistence.persistence}
           recovery={persistence.recovery}
+          themeOpen={themeOpen}
+          onToggleTheme={() => setThemeOpen((o) => !o)}
           isNarrow={isNarrow}
           dialog={dialog}
           setDialog={setDialog}
@@ -189,11 +193,17 @@ export function PageBuilder() {
           />
 
           {!isNarrow ? (
-            <aside className={styles.panel} aria-label="Inspector">
-              <div className={styles.panelTitle}>Inspector</div>
-              <div className={styles.panelBody}>
-                <PageBuilderInspector tab={inspectorTab} onTabChange={setInspectorTab} />
-              </div>
+            <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"}>
+              {themeOpen ? (
+                <DesignTokensPanel onClose={() => setThemeOpen(false)} />
+              ) : (
+                <>
+                  <div className={styles.panelTitle}>Inspector</div>
+                  <div className={styles.panelBody}>
+                    <PageBuilderInspector tab={inspectorTab} onTabChange={setInspectorTab} />
+                  </div>
+                </>
+              )}
             </aside>
           ) : null}
         </main>

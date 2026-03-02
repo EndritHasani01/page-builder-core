@@ -27,6 +27,9 @@ export function PageBuilderToolbar(props: {
   persistence: PersistenceStatus;
   recovery: RecoveryInfo | null;
 
+  themeOpen: boolean;
+  onToggleTheme: () => void;
+
   isNarrow: boolean;
   dialog: PageBuilderDialog;
   setDialog: Dispatch<SetStateAction<PageBuilderDialog>>;
@@ -217,6 +220,16 @@ export function PageBuilderToolbar(props: {
               </button>
             </>
           ) : null}
+
+          <button
+            className={props.themeOpen ? styles.buttonActive : styles.button}
+            type="button"
+            onClick={props.onToggleTheme}
+            aria-label="Toggle Design Tokens panel"
+            aria-pressed={props.themeOpen}
+          >
+            Theme
+          </button>
 
           <button
             className={styles.button}

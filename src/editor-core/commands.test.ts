@@ -165,4 +165,66 @@ describe("applyCommand", () => {
     expect(cleared.nodes.column_1.style?.md).toBeUndefined();
     expect(cleared.nodes.column_1.style?.base.padding).toBe("8px");
   });
+
+  test("UPDATE_THEME deep-merges color patch without clobbering other tokens", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const originalText = doc.theme.colors.text;
+    const originalBorder = doc.theme.colors.border;
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { colors: { primary: "#ff0000" } },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.theme.colors.primary).toBe("#ff0000");
+    expect(res.doc.theme.colors.text).toBe(originalText);
+    expect(res.doc.theme.colors.border).toBe(originalBorder);
+  });
+
+  test("UPDATE_THEME updates typography and spacing independently", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+
+    const withFont = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { typography: { baseFontSize: "18px" } },
+    }).doc;
+
+    expect(withFont.theme.typography.baseFontSize).toBe("18px");
+    expect(withFont.theme.typography.fontFamily).toBe(doc.theme.typography.fontFamily);
+
+    const withUnit = applyCommand(withFont, {
+      type: "UPDATE_THEME",
+      patch: { spacing: { unit: "8px" } },
+    }).doc;
+
+    expect(withUnit.theme.spacing.unit).toBe("8px");
+    expect(withUnit.theme.typography.baseFontSize).toBe("18px");
+  });
+
+  test("UPDATE_THEME rejects an invalid CSS color", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const originalPrimary = doc.theme.colors.primary;
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { colors: { primary: "not-a-color-12345" } },
+    });
+
+    expect(res.changed).toBe(false);
+    expect(res.doc.theme.colors.primary).toBe(originalPrimary);
+    expect(res.issues.some((i) => i.level === "error")).toBe(true);
+  });
+
+  test("UPDATE_THEME rejects an empty font family", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { typography: { fontFamily: "   " } },
+    });
+
+    expect(res.changed).toBe(false);
+    expect(res.issues.some((i) => i.level === "error")).toBe(true);
+  });
 });

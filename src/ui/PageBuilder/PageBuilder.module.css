@@ -98,6 +98,13 @@
   opacity: 0.55;
 }
 
+.buttonActive {
+  composes: button;
+  border-color: color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  background: color-mix(in srgb, #ffffff 88%, var(--color-primary));
+}
+
 .banner {
   display: flex;
   align-items: center;

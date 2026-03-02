@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { Breakpoint, Document } from "@/editor-core";
-import { RenderDocument } from "@/renderer";
+import { RenderDocument, themeToCssVars } from "@/renderer";
 
 import { sanitizeDocumentForHtmlExport } from "./sanitize";
 import type { HtmlExportMode, HtmlExportOptions, HtmlExportResult } from "./types";
@@ -39,7 +39,21 @@ async function getRenderToStaticMarkup(): Promise<(node: ReactNode) => string> {
   return mod.renderToStaticMarkup;
 }
 
-function htmlShell(body: string, opts: { title: string; lang: string }): string {
+function buildThemeStyleBlock(doc: Document): string {
+  const vars = themeToCssVars(doc.theme) as Record<string, string>;
+  const declarations = Object.entries(vars)
+    .map(([prop, value]) => {
+      const safeValue = String(value);
+      // Reject values that could break out of the style block
+      if (safeValue.includes("</")) return "";
+      return `${prop}:${safeValue}`;
+    })
+    .filter(Boolean)
+    .join(";");
+  return `<style>:root{${declarations}}</style>`;
+}
+
+function htmlShell(body: string, opts: { title: string; lang: string; themeStyle: string }): string {
   return [
     "<!doctype html>",
     `<html lang="${escapeAttr(opts.lang)}">`,
@@ -47,6 +61,7 @@ function htmlShell(body: string, opts: { title: string; lang: string }): string 
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escapeHtml(opts.title)}</title>`,
+    opts.themeStyle,
     "</head>",
     "<body>",
     body,
@@ -74,6 +89,6 @@ export async function exportDocumentToHtml(doc: Document, opts: HtmlExportOption
       ? sanitized.doc.meta.title
       : "Page";
 
-  return { html: htmlShell(body, { title, lang }), warnings: sanitized.warnings };
+  return { html: htmlShell(body, { title, lang, themeStyle: buildThemeStyleBlock(sanitized.doc) }), warnings: sanitized.warnings };
 }
 

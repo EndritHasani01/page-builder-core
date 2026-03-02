@@ -134,6 +134,8 @@ function defaultHistoryLabel(action: DocCommand): string {
       return "Set columns";
     case "INSERT_SUBTREE":
       return "Insert";
+    case "UPDATE_THEME":
+      return "Update theme";
     default: {
       const _exhaustive: never = action;
       return _exhaustive;
@@ -277,6 +279,7 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
             case "UPDATE_PROPS":
             case "UPDATE_STYLE":
             case "SET_COLUMNS":
+            case "UPDATE_THEME":
               partial.selectedId = ensureValidSelection(nextDoc, state.selectedId);
               break;
           }

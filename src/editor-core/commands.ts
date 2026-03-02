@@ -16,6 +16,7 @@ import type {
   NodeType,
   StyleProps,
   Subtree,
+  Theme,
   ValidationIssue,
 } from "./types";
 import { validateDocument } from "./validate";
@@ -37,7 +38,15 @@ export type DocCommand =
   | { type: "UPDATE_STYLE"; nodeId: NodeId; breakpoint: Breakpoint; patch: Partial<StyleProps> }
   | { type: "RESET_STYLE_BREAKPOINT"; nodeId: NodeId; breakpoint: Breakpoint }
   | { type: "SET_COLUMNS"; nodeId: NodeId; columns: number }
-  | { type: "INSERT_SUBTREE"; parentId: NodeId; index?: number; subtree: Subtree };
+  | { type: "INSERT_SUBTREE"; parentId: NodeId; index?: number; subtree: Subtree }
+  | {
+      type: "UPDATE_THEME";
+      patch: {
+        colors?: Partial<Theme["colors"]>;
+        typography?: Partial<Theme["typography"]>;
+        spacing?: Partial<Theme["spacing"]>;
+      };
+    };
 
 export type ApplyDocCommandResult = {
   doc: Document;
@@ -711,6 +720,93 @@ function applyResetStyleBreakpoint(
   cleanupEmptyStyle(node);
 }
 
+function isValidCssColor(value: string): boolean {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  if (!v) return false;
+  if (/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v)) return true;
+  if (/^(rgba?|hsla?|color)\s*\(/.test(v)) return true;
+  if (/^[a-zA-Z]+$/.test(v)) return true;
+  if (v.startsWith("var(--")) return true;
+  return false;
+}
+
+function applyUpdateTheme(
+  doc: DraftDoc,
+  ctx: ApplyCtx,
+  cmd: Extract<DocCommand, { type: "UPDATE_THEME" }>,
+) {
+  const { patch } = cmd;
+
+  if (patch.colors) {
+    for (const [key, val] of Object.entries(patch.colors)) {
+      if (PROHIBITED_KEYS.has(key)) continue;
+      if (val === undefined) continue;
+      if (!isValidCssColor(val)) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: `Invalid CSS color for theme.colors.${key}: "${val}". Use hex, rgb(), hsl(), or a named color.`,
+        });
+        return;
+      }
+      (doc.theme.colors as Record<string, string>)[key] = val;
+    }
+  }
+
+  if (patch.typography) {
+    const t = patch.typography;
+    if (t.fontFamily !== undefined) {
+      if (typeof t.fontFamily !== "string" || !t.fontFamily.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Font family must be a non-empty string.",
+        });
+        return;
+      }
+      doc.theme.typography.fontFamily = t.fontFamily;
+    }
+    if (t.baseFontSize !== undefined) {
+      if (typeof t.baseFontSize !== "string" || !t.baseFontSize.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Base font size must be a non-empty CSS length string.",
+        });
+        return;
+      }
+      doc.theme.typography.baseFontSize = t.baseFontSize;
+    }
+    if (t.scale !== undefined) {
+      const num = typeof t.scale === "number" ? t.scale : Number(t.scale);
+      if (!Number.isFinite(num) || num <= 0 || num > 10) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Typography scale must be a positive finite number no greater than 10.",
+        });
+        return;
+      }
+      doc.theme.typography.scale = num;
+    }
+  }
+
+  if (patch.spacing) {
+    if (patch.spacing.unit !== undefined) {
+      if (typeof patch.spacing.unit !== "string" || !patch.spacing.unit.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Spacing unit must be a non-empty CSS length string.",
+        });
+        return;
+      }
+      doc.theme.spacing.unit = patch.spacing.unit;
+    }
+  }
+}
+
 function cleanupEmptyStyle(node: Draft<Node>) {
   const style = node.style;
   if (!style) return;
@@ -762,6 +858,9 @@ export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: Appl
       return;
     case "SET_COLUMNS":
       setColumnsCount(doc, ctx, cmd.nodeId, cmd.columns);
+      return;
+    case "UPDATE_THEME":
+      applyUpdateTheme(doc, ctx, cmd);
       return;
     default: {
       const _exhaustive: never = cmd;
