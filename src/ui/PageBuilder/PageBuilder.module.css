@@ -1047,7 +1047,29 @@
   padding: 0;
   margin: 0;
   display: grid;
-  gap: 6px;
+  gap: 10px;
+}
+
+.paletteGroup {
+  display: grid;
+  gap: 4px;
+}
+
+.paletteGroupLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--editor-text-muted);
+  padding: 2px 2px 4px;
+}
+
+.paletteGroupItems {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .paletteItem {

@@ -35,6 +35,9 @@ export type RenderDocumentProps = {
   onStartInlineTextEdit?: (nodeId: NodeId) => void;
   onCommitInlineTextEdit?: (nodeId: NodeId, nextContent: RichContent) => void;
   onCancelInlineTextEdit?: (nodeId: NodeId) => void;
+
+  /** Called when a form is submitted in preview mode (preventDefault already called). */
+  onPreviewFormSubmit?: () => void;
 };
 
 export function RenderDocument(props: RenderDocumentProps) {
@@ -160,6 +163,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
     onStartInlineTextEdit: props.onStartInlineTextEdit,
     onCommitInlineTextEdit: props.onCommitInlineTextEdit,
     onCancelInlineTextEdit: props.onCancelInlineTextEdit,
+    onPreviewFormSubmit: props.onPreviewFormSubmit,
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
@@ -302,6 +306,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     onStartInlineTextEdit: props.onStartInlineTextEdit,
     onCommitInlineTextEdit: props.onCommitInlineTextEdit,
     onCancelInlineTextEdit: props.onCancelInlineTextEdit,
+    onPreviewFormSubmit: props.onPreviewFormSubmit,
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
@@ -330,6 +335,7 @@ function renderNode(args: {
   onStartInlineTextEdit?: (nodeId: NodeId) => void;
   onCommitInlineTextEdit?: (nodeId: NodeId, nextContent: RichContent) => void;
   onCancelInlineTextEdit?: (nodeId: NodeId) => void;
+  onPreviewFormSubmit?: () => void;
 }) {
   const { node, mode, breakpoint } = args;
 
@@ -692,6 +698,354 @@ function renderNode(args: {
           {args.chrome}
           <hr className={args.chromeClassName} style={hrStyle} />
         </div>
+      );
+    }
+
+    case "form": {
+      const style = mergeCss(args.nodeStyle, args.wrapperStyle);
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={args.chromeClassName}
+            style={style}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={{ pointerEvents: "none", display: "flex", flexDirection: "column", gap: "8px" }}>
+              {args.children}
+            </div>
+          </div>
+        );
+      }
+
+      const safeAction = node.props.action.trim() && isProbablySafeUrl(node.props.action) ? node.props.action : undefined;
+      return (
+        <form
+          action={safeAction}
+          method={node.props.method}
+          name={node.props.name || undefined}
+          style={style}
+          onSubmit={
+            mode === "preview"
+              ? (e) => {
+                  e.preventDefault();
+                  args.onPreviewFormSubmit?.();
+                }
+              : undefined
+          }
+        >
+          {args.children}
+        </form>
+      );
+    }
+
+    case "textInput": {
+      const fieldId = `field-${node.id}`;
+      const inputStyle: CSSProperties = {
+        display: "block",
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: "6px",
+        border: "1px solid var(--color-border)",
+        fontSize: "var(--text-base)",
+        fontFamily: "inherit",
+        background: "#ffffff",
+        color: "var(--color-text)",
+      };
+      const labelStyle: CSSProperties = { display: "block", fontWeight: 500, fontSize: "0.9em", marginBottom: "4px" };
+      const wrapperStyle: CSSProperties = { display: "flex", flexDirection: "column", ...args.nodeStyle };
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={{ pointerEvents: "none", ...wrapperStyle }}>
+              <label style={labelStyle}>{node.props.label || "Label"}</label>
+              <input
+                type={node.props.inputType}
+                placeholder={node.props.placeholder}
+                required={node.props.required}
+                style={inputStyle}
+                readOnly
+              />
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={wrapperStyle}>
+          <label htmlFor={fieldId} style={labelStyle}>{node.props.label}</label>
+          <input
+            id={fieldId}
+            type={node.props.inputType}
+            name={node.props.name}
+            placeholder={node.props.placeholder}
+            required={node.props.required}
+            style={inputStyle}
+          />
+        </div>
+      );
+    }
+
+    case "textarea": {
+      const fieldId = `field-${node.id}`;
+      const inputStyle: CSSProperties = {
+        display: "block",
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: "6px",
+        border: "1px solid var(--color-border)",
+        fontSize: "var(--text-base)",
+        fontFamily: "inherit",
+        background: "#ffffff",
+        color: "var(--color-text)",
+        resize: "vertical",
+      };
+      const labelStyle: CSSProperties = { display: "block", fontWeight: 500, fontSize: "0.9em", marginBottom: "4px" };
+      const wrapperStyle: CSSProperties = { display: "flex", flexDirection: "column", ...args.nodeStyle };
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={{ pointerEvents: "none", ...wrapperStyle }}>
+              <label style={labelStyle}>{node.props.label || "Label"}</label>
+              <textarea
+                rows={node.props.rows}
+                placeholder={node.props.placeholder}
+                required={node.props.required}
+                style={inputStyle}
+                readOnly
+              />
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={wrapperStyle}>
+          <label htmlFor={fieldId} style={labelStyle}>{node.props.label}</label>
+          <textarea
+            id={fieldId}
+            name={node.props.name}
+            rows={node.props.rows}
+            placeholder={node.props.placeholder}
+            required={node.props.required}
+            style={inputStyle}
+          />
+        </div>
+      );
+    }
+
+    case "selectInput": {
+      const fieldId = `field-${node.id}`;
+      const selectStyle: CSSProperties = {
+        display: "block",
+        width: "100%",
+        padding: "8px 10px",
+        borderRadius: "6px",
+        border: "1px solid var(--color-border)",
+        fontSize: "var(--text-base)",
+        fontFamily: "inherit",
+        background: "#ffffff",
+        color: "var(--color-text)",
+      };
+      const labelStyle: CSSProperties = { display: "block", fontWeight: 500, fontSize: "0.9em", marginBottom: "4px" };
+      const wrapperStyle: CSSProperties = { display: "flex", flexDirection: "column", ...args.nodeStyle };
+      const opts = node.props.options ?? [];
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={{ pointerEvents: "none", ...wrapperStyle }}>
+              <label style={labelStyle}>{node.props.label || "Label"}</label>
+              <select style={selectStyle} required={node.props.required}>
+                {opts.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={wrapperStyle}>
+          <label htmlFor={fieldId} style={labelStyle}>{node.props.label}</label>
+          <select id={fieldId} name={node.props.name} required={node.props.required} style={selectStyle}>
+            {opts.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    case "checkbox": {
+      const fieldId = `field-${node.id}`;
+      const wrapperStyle: CSSProperties = { display: "flex", alignItems: "center", gap: "8px", ...args.nodeStyle };
+      const labelStyle: CSSProperties = { cursor: "pointer" };
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={{ pointerEvents: "none", ...wrapperStyle }}>
+              <input type="checkbox" defaultChecked={node.props.checked} readOnly />
+              <span>{node.props.label || "Label"}</span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div style={wrapperStyle}>
+          <input
+            type="checkbox"
+            id={fieldId}
+            name={node.props.name}
+            defaultChecked={node.props.checked}
+          />
+          <label htmlFor={fieldId} style={labelStyle}>{node.props.label}</label>
+        </div>
+      );
+    }
+
+    case "radioGroup": {
+      const fieldsetStyle: CSSProperties = { border: "none", padding: 0, margin: 0, ...args.nodeStyle };
+      const legendStyle: CSSProperties = { fontWeight: 500, marginBottom: "6px" };
+      const radioRowStyle: CSSProperties = { display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" };
+      const opts = node.props.options ?? [];
+
+      if (mode === "editor") {
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <fieldset style={{ pointerEvents: "none", ...fieldsetStyle }}>
+              <legend style={legendStyle}>{node.props.label || "Group"}</legend>
+              {opts.map((opt) => (
+                <div key={opt.value} style={radioRowStyle}>
+                  <input type="radio" name={node.props.name} value={opt.value} readOnly />
+                  <span>{opt.label}</span>
+                </div>
+              ))}
+            </fieldset>
+          </div>
+        );
+      }
+
+      return (
+        <fieldset style={fieldsetStyle}>
+          <legend style={legendStyle}>{node.props.label}</legend>
+          {opts.map((opt, i) => {
+            const radioId = `field-${node.id}-${i}`;
+            return (
+              <div key={opt.value} style={radioRowStyle}>
+                <input
+                  type="radio"
+                  id={radioId}
+                  name={node.props.name}
+                  value={opt.value}
+                  required={node.props.required && i === 0}
+                />
+                <label htmlFor={radioId}>{opt.label}</label>
+              </div>
+            );
+          })}
+        </fieldset>
+      );
+    }
+
+    case "submitButton": {
+      const baseStyle: CSSProperties = {
+        display: "inline-block",
+        padding: "10px 14px",
+        borderRadius: "10px",
+        border: "1px solid var(--color-border)",
+        cursor: "pointer",
+        fontSize: "var(--text-base)",
+        fontFamily: "inherit",
+      };
+      const variantStyle: CSSProperties =
+        node.props.variant === "primary"
+          ? { background: "var(--color-primary)", color: "#ffffff", borderColor: "transparent" }
+          : { background: "#ffffff", color: "var(--color-text)" };
+      const buttonStyle = mergeCss(baseStyle, variantStyle, args.nodeStyle);
+
+      if (mode === "editor") {
+        return (
+          <span
+            {...args.dataAttrs}
+            className={[styles.wrapped, styles.wrappedInline].join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <button
+              type="button"
+              style={{ ...buttonStyle, pointerEvents: "none" }}
+              className={args.chromeClassName}
+            >
+              {node.props.label}
+            </button>
+          </span>
+        );
+      }
+
+      return (
+        <button type="submit" style={buttonStyle}>
+          {node.props.label}
+        </button>
       );
     }
 

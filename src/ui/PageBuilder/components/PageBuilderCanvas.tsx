@@ -22,6 +22,7 @@ export function PageBuilderCanvas(props: {
   dropIndicator: DropIndicatorGeometry | null;
   onAddSection: () => void;
   onBrowseTemplates?: () => void;
+  onPreviewFormSubmit?: () => void;
 }) {
   const {
     canvasFrameRef,
@@ -33,6 +34,7 @@ export function PageBuilderCanvas(props: {
     dropIndicator,
     onAddSection,
     onBrowseTemplates,
+    onPreviewFormSubmit,
   } = props;
   const doc = useEditorStore((s) => s.doc);
   const mode = useEditorStore((s) => s.mode);
@@ -153,6 +155,7 @@ export function PageBuilderCanvas(props: {
               onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
               onSelect={renderMode === "editor" ? onSelect : undefined}
               onHover={renderMode === "editor" ? onHover : undefined}
+              onPreviewFormSubmit={isPreview ? onPreviewFormSubmit : undefined}
             />
           )}
           {dropIndicator ? (

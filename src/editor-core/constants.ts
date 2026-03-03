@@ -11,6 +11,13 @@ export const NODE_TYPES = [
   "button",
   "spacer",
   "divider",
+  "form",
+  "textInput",
+  "textarea",
+  "selectInput",
+  "checkbox",
+  "radioGroup",
+  "submitButton",
 ] as const;
 
 export const BREAKPOINTS = ["base", "sm", "md", "lg"] as const;

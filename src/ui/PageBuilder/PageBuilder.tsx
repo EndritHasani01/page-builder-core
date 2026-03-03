@@ -282,6 +282,7 @@ export function PageBuilder() {
             dropIndicator={dnd.dropIndicator}
             onAddSection={onAddSection}
             onBrowseTemplates={() => setTemplateGalleryOpen(true)}
+            onPreviewFormSubmit={() => pushToast("info", "Form submission is disabled in preview.")}
           />
 
           {!isNarrow ? (

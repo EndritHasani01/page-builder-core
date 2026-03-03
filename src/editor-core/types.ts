@@ -128,6 +128,55 @@ export type DividerProps = {
   color: string;
 };
 
+export type SelectOption = { label: string; value: string };
+
+export type FormProps = {
+  action: string;
+  method: "get" | "post";
+  name?: string;
+};
+
+export type TextInputProps = {
+  label: string;
+  name: string;
+  placeholder: string;
+  inputType: "text" | "email" | "tel" | "number" | "password";
+  required: boolean;
+};
+
+export type TextareaProps = {
+  label: string;
+  name: string;
+  placeholder: string;
+  rows: number;
+  required: boolean;
+};
+
+export type SelectInputProps = {
+  label: string;
+  name: string;
+  options: SelectOption[];
+  required: boolean;
+};
+
+export type CheckboxProps = {
+  label: string;
+  name: string;
+  checked: boolean;
+};
+
+export type RadioGroupProps = {
+  label: string;
+  name: string;
+  options: SelectOption[];
+  required: boolean;
+};
+
+export type SubmitButtonProps = {
+  label: string;
+  variant: "primary" | "secondary";
+};
+
 export type NodePropsByType = {
   page: PageProps;
   section: SectionProps;
@@ -139,6 +188,13 @@ export type NodePropsByType = {
   button: ButtonProps;
   spacer: SpacerProps;
   divider: DividerProps;
+  form: FormProps;
+  textInput: TextInputProps;
+  textarea: TextareaProps;
+  selectInput: SelectInputProps;
+  checkbox: CheckboxProps;
+  radioGroup: RadioGroupProps;
+  submitButton: SubmitButtonProps;
 };
 
 export type NodeByType = {
@@ -218,7 +274,8 @@ export type InspectorField =
   | { kind: "color"; path: string; label: string; required?: boolean }
   | { kind: "length"; path: string; label: string; tokens?: string[]; required?: boolean }
   | { kind: "toggle"; path: string; label: string; required?: boolean }
-  | { kind: "info"; path: string; label: string; message: string };
+  | { kind: "info"; path: string; label: string; message: string }
+  | { kind: "options-list"; path: string; label: string };
 
 export type InspectorSection = "content" | "layout" | "spacing" | "typography" | "appearance" | "constraints";
 

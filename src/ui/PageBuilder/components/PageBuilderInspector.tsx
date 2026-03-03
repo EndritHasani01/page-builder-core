@@ -816,7 +816,7 @@ function StyleField(props: {
 function InspectorPropField(props: {
   nodeProps: Record<string, unknown>;
   field: {
-    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info";
+    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info" | "options-list";
     path: string;
     label: string;
     min?: number;
@@ -842,6 +842,21 @@ function InspectorPropField(props: {
         <div className={styles.fieldLabel}>{props.field.label}</div>
         <div className={styles.muted}>{props.field.message ?? ""}</div>
       </div>
+    );
+  }
+
+  if (props.field.kind === "options-list") {
+    const optionsList = Array.isArray(rawValue)
+      ? (rawValue as { label: string; value: string }[])
+      : [];
+    return (
+      <OptionsListField
+        label={props.field.label}
+        options={optionsList}
+        disabled={props.disabled}
+        issues={props.issues}
+        onChange={props.onChange}
+      />
     );
   }
 
@@ -945,6 +960,85 @@ function InspectorPropField(props: {
           {props.issues.map((i, idx) => (
             <div key={idx} className={i.level === "error" ? styles.issueError : styles.issueWarning}>
               {i.message}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ─── OptionsListField ─────────────────────────────────────────────────────────
+
+function OptionsListField(props: {
+  label: string;
+  options: { label: string; value: string }[];
+  disabled: boolean;
+  issues: ValidationIssue[];
+  onChange: (value: unknown) => void;
+}) {
+  const addOption = () => {
+    const next = [...props.options, { label: `Option ${props.options.length + 1}`, value: `option-${props.options.length + 1}` }];
+    props.onChange(next);
+  };
+
+  const removeOption = (index: number) => {
+    const next = props.options.filter((_, i) => i !== index);
+    props.onChange(next);
+  };
+
+  const updateOption = (index: number, field: "label" | "value", newVal: string) => {
+    const next = props.options.map((opt, i) => (i === index ? { ...opt, [field]: newVal } : opt));
+    props.onChange(next);
+  };
+
+  return (
+    <div className={styles.fieldRow}>
+      <div className={styles.fieldHeader}>
+        <span className={styles.fieldLabel}>{props.label}</span>
+        <button type="button" className={styles.resetButton} disabled={props.disabled} onClick={addOption}>
+          + Add
+        </button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+        {props.options.map((opt, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "4px", alignItems: "center" }}>
+            <input
+              type="text"
+              value={opt.label}
+              placeholder="Label"
+              disabled={props.disabled}
+              aria-label={`Option ${i + 1} label`}
+              onChange={(e) => updateOption(i, "label", e.target.value)}
+            />
+            <input
+              type="text"
+              value={opt.value}
+              placeholder="Value"
+              disabled={props.disabled}
+              aria-label={`Option ${i + 1} value`}
+              onChange={(e) => updateOption(i, "value", e.target.value)}
+            />
+            <button
+              type="button"
+              className={styles.resetButton}
+              disabled={props.disabled}
+              aria-label={`Remove option ${i + 1}`}
+              onClick={() => removeOption(i)}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {props.options.length === 0 ? (
+          <div className={styles.muted} style={{ fontSize: "11px" }}>No options. Click + Add to add one.</div>
+        ) : null}
+      </div>
+      {props.issues.length > 0 ? (
+        <div className={styles.fieldIssues} role="alert">
+          {props.issues.map((issue, idx) => (
+            <div key={idx} className={issue.level === "error" ? styles.issueError : styles.issueWarning}>
+              {issue.message}
             </div>
           ))}
         </div>

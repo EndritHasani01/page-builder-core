@@ -130,7 +130,7 @@ export const blockRegistry: BlockRegistry = {
     type: "column",
     label: "Column",
     defaultProps: {},
-    allowedChildren: ["container", "text", "image", "button", "spacer", "divider"],
+    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
     inspector: {
       type: "column",
       groups: [
@@ -146,7 +146,7 @@ export const blockRegistry: BlockRegistry = {
     type: "container",
     label: "Container",
     defaultProps: { as: "div" },
-    allowedChildren: ["container", "text", "image", "button", "spacer", "divider"],
+    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
     inspector: {
       type: "container",
       groups: [
@@ -407,6 +407,251 @@ export const blockRegistry: BlockRegistry = {
           level: "warning",
           message: "Divider thickness does not look like a CSS length or variable token.",
           fieldPath: "props.thickness",
+        });
+      }
+      return issues;
+    },
+  },
+
+  form: {
+    type: "form",
+    label: "Form",
+    defaultProps: { action: "", method: "post", name: undefined },
+    allowedChildren: ["textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton", "text", "spacer", "divider", "container"],
+    inspector: {
+      type: "form",
+      groups: [
+        {
+          label: "Settings",
+          fields: [
+            { kind: "text", path: "props.action", label: "Action URL", placeholder: "https://example.com/submit" },
+            {
+              kind: "select",
+              path: "props.method",
+              label: "Method",
+              options: [
+                { label: "POST", value: "post" },
+                { label: "GET", value: "get" },
+              ],
+            },
+            { kind: "text", path: "props.name", label: "Form name (optional)" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      const action = node.props.action.trim();
+      if (action && !isProbablySafeUrl(action)) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Form action URL is not allowed.",
+          fieldPath: "props.action",
+        });
+      }
+      return issues;
+    },
+  },
+
+  textInput: {
+    type: "textInput",
+    label: "Text Input",
+    defaultProps: { label: "Label", name: "", placeholder: "", inputType: "text", required: false },
+    allowedChildren: [],
+    inspector: {
+      type: "textInput",
+      groups: [
+        {
+          label: "Field",
+          fields: [
+            { kind: "text", path: "props.label", label: "Label" },
+            { kind: "text", path: "props.name", label: "Name (for submission)", required: true },
+            { kind: "text", path: "props.placeholder", label: "Placeholder" },
+            {
+              kind: "select",
+              path: "props.inputType",
+              label: "Input type",
+              options: [
+                { label: "Text", value: "text" },
+                { label: "Email", value: "email" },
+                { label: "Phone", value: "tel" },
+                { label: "Number", value: "number" },
+                { label: "Password", value: "password" },
+              ],
+            },
+            { kind: "toggle", path: "props.required", label: "Required" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (!node.props.name.trim()) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Text input must have a name for form submission.",
+          fieldPath: "props.name",
+        });
+      }
+      return issues;
+    },
+  },
+
+  textarea: {
+    type: "textarea",
+    label: "Textarea",
+    defaultProps: { label: "Label", name: "", placeholder: "", rows: 4, required: false },
+    allowedChildren: [],
+    inspector: {
+      type: "textarea",
+      groups: [
+        {
+          label: "Field",
+          fields: [
+            { kind: "text", path: "props.label", label: "Label" },
+            { kind: "text", path: "props.name", label: "Name (for submission)", required: true },
+            { kind: "text", path: "props.placeholder", label: "Placeholder" },
+            { kind: "number", path: "props.rows", label: "Rows", min: 2, max: 20, step: 1, required: true },
+            { kind: "toggle", path: "props.required", label: "Required" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (!node.props.name.trim()) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Textarea must have a name for form submission.",
+          fieldPath: "props.name",
+        });
+      }
+      return issues;
+    },
+  },
+
+  selectInput: {
+    type: "selectInput",
+    label: "Select",
+    defaultProps: { label: "Label", name: "", options: [{ label: "Option 1", value: "option-1" }], required: false },
+    allowedChildren: [],
+    inspector: {
+      type: "selectInput",
+      groups: [
+        {
+          label: "Field",
+          fields: [
+            { kind: "text", path: "props.label", label: "Label" },
+            { kind: "text", path: "props.name", label: "Name (for submission)" },
+            { kind: "toggle", path: "props.required", label: "Required" },
+            { kind: "options-list", path: "props.options", label: "Options" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (!node.props.options || node.props.options.length === 0) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Select must have at least one option.",
+          fieldPath: "props.options",
+        });
+      }
+      return issues;
+    },
+  },
+
+  checkbox: {
+    type: "checkbox",
+    label: "Checkbox",
+    defaultProps: { label: "Check me", name: "", checked: false },
+    allowedChildren: [],
+    inspector: {
+      type: "checkbox",
+      groups: [
+        {
+          label: "Field",
+          fields: [
+            { kind: "text", path: "props.label", label: "Label" },
+            { kind: "text", path: "props.name", label: "Name (for submission)" },
+            { kind: "toggle", path: "props.checked", label: "Checked by default" },
+          ],
+        },
+      ],
+    },
+  },
+
+  radioGroup: {
+    type: "radioGroup",
+    label: "Radio Group",
+    defaultProps: { label: "Choose one", name: "", options: [{ label: "Option 1", value: "option-1" }], required: false },
+    allowedChildren: [],
+    inspector: {
+      type: "radioGroup",
+      groups: [
+        {
+          label: "Field",
+          fields: [
+            { kind: "text", path: "props.label", label: "Legend" },
+            { kind: "text", path: "props.name", label: "Name (for submission)" },
+            { kind: "toggle", path: "props.required", label: "Required" },
+            { kind: "options-list", path: "props.options", label: "Options" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (!node.props.options || node.props.options.length === 0) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Radio group must have at least one option.",
+          fieldPath: "props.options",
+        });
+      }
+      return issues;
+    },
+  },
+
+  submitButton: {
+    type: "submitButton",
+    label: "Submit Button",
+    defaultProps: { label: "Submit", variant: "primary" },
+    allowedChildren: [],
+    inspector: {
+      type: "submitButton",
+      groups: [
+        {
+          label: "Button",
+          fields: [
+            { kind: "text", path: "props.label", label: "Label", required: true },
+            {
+              kind: "select",
+              path: "props.variant",
+              label: "Variant",
+              options: [
+                { label: "Primary", value: "primary" },
+                { label: "Secondary", value: "secondary" },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (!node.props.label.trim()) {
+        issues.push({
+          nodeId: node.id,
+          level: "warning",
+          message: "Submit button label is empty.",
+          fieldPath: "props.label",
         });
       }
       return issues;

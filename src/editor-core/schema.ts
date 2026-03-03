@@ -153,6 +153,74 @@ const DividerPropsSchema = z
   })
   .strict();
 
+const SelectOptionSchema = z
+  .object({
+    label: z.string().min(1),
+    value: z.string().min(1),
+  })
+  .strict();
+
+const FormPropsSchema = z
+  .object({
+    action: z.string(),
+    method: z.enum(["get", "post"]),
+    name: z.string().optional(),
+  })
+  .strict();
+
+const TextInputPropsSchema = z
+  .object({
+    label: z.string(),
+    name: z.string(),
+    placeholder: z.string(),
+    inputType: z.enum(["text", "email", "tel", "number", "password"]),
+    required: z.boolean(),
+  })
+  .strict();
+
+const TextareaPropsSchema = z
+  .object({
+    label: z.string(),
+    name: z.string(),
+    placeholder: z.string(),
+    rows: z.number().int().min(2).max(20),
+    required: z.boolean(),
+  })
+  .strict();
+
+const SelectInputPropsSchema = z
+  .object({
+    label: z.string(),
+    name: z.string(),
+    options: z.array(SelectOptionSchema).min(1),
+    required: z.boolean(),
+  })
+  .strict();
+
+const CheckboxPropsSchema = z
+  .object({
+    label: z.string(),
+    name: z.string(),
+    checked: z.boolean(),
+  })
+  .strict();
+
+const RadioGroupPropsSchema = z
+  .object({
+    label: z.string(),
+    name: z.string(),
+    options: z.array(SelectOptionSchema).min(1),
+    required: z.boolean(),
+  })
+  .strict();
+
+const SubmitButtonPropsSchema = z
+  .object({
+    label: z.string(),
+    variant: z.enum(["primary", "secondary"]),
+  })
+  .strict();
+
 export const NodeSchema = z.discriminatedUnion("type", [
   NodeBaseSchema.extend({ type: z.literal("page"), props: PagePropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("section"), props: SectionPropsSchema }),
@@ -164,6 +232,13 @@ export const NodeSchema = z.discriminatedUnion("type", [
   NodeBaseSchema.extend({ type: z.literal("button"), props: ButtonPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("spacer"), props: SpacerPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("divider"), props: DividerPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("form"), props: FormPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("textInput"), props: TextInputPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("textarea"), props: TextareaPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("selectInput"), props: SelectInputPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("checkbox"), props: CheckboxPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("radioGroup"), props: RadioGroupPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("submitButton"), props: SubmitButtonPropsSchema }),
 ]);
 
 export const ThemeSchema = z

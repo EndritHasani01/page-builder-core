@@ -1,6 +1,6 @@
 import { deepClone, isProbablySafeUrl, type Document, type NodeId } from "@/editor-core";
 
-type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link";
+type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link" | "form.action";
 
 type UnsafeUrl = {
   nodeId: NodeId;
@@ -28,6 +28,13 @@ function listUnsafeUrls(doc: Document): UnsafeUrl[] {
       const href = (n.props as { href?: unknown }).href;
       if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
         unsafe.push({ nodeId: n.id, kind: "button.href", value: href });
+      }
+    }
+
+    if (n.type === "form") {
+      const action = (n.props as { action?: unknown }).action;
+      if (typeof action === "string" && action.trim() && !isProbablySafeUrl(action)) {
+        unsafe.push({ nodeId: n.id, kind: "form.action", value: action });
       }
     }
 
@@ -100,6 +107,10 @@ export function sanitizeDocumentForHtmlExport(doc: Document): { doc: Document; w
     }
     if (u.kind === "button.href" && node.type === "button") {
       (node.props as Record<string, unknown>).href = "";
+      continue;
+    }
+    if (u.kind === "form.action" && node.type === "form") {
+      (node.props as Record<string, unknown>).action = "";
       continue;
     }
     if (u.kind === "text.link" && node.type === "text") {
