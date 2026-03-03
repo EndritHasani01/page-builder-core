@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 
@@ -29,6 +29,24 @@ import { useToastHost } from "./hooks/useToastHost";
 
 import styles from "./PageBuilder.module.css";
 
+const PANEL_WIDTHS_KEY = "pb:ui:panelWidths";
+const MIN_PANEL_W = 150;
+const MAX_PANEL_W = 400;
+
+function readSavedPanelWidths(): { left: number; right: number } {
+  try {
+    const raw = localStorage.getItem(PANEL_WIDTHS_KEY);
+    if (!raw) return { left: 280, right: 320 };
+    const parsed = JSON.parse(raw) as { left?: number; right?: number };
+    return {
+      left: typeof parsed.left === "number" ? parsed.left : 280,
+      right: typeof parsed.right === "number" ? parsed.right : 320,
+    };
+  } catch {
+    return { left: 280, right: 320 };
+  }
+}
+
 export function PageBuilder() {
   const { toasts, pushToast, dismissToast } = useToastHost();
 
@@ -41,6 +59,58 @@ export function PageBuilder() {
   const [resetOpen, setResetOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+
+  // Panel resize state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(() => readSavedPanelWidths().left);
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => readSavedPanelWidths().right);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        PANEL_WIDTHS_KEY,
+        JSON.stringify({ left: leftPanelWidth, right: rightPanelWidth }),
+      );
+    } catch {
+      // ignore quota errors
+    }
+  }, [leftPanelWidth, rightPanelWidth]);
+
+  const startResizeLeft = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = leftPanelWidth;
+      const onMove = (ev: MouseEvent) => {
+        setLeftPanelWidth(Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, startW + ev.clientX - startX)));
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [leftPanelWidth],
+  );
+
+  const startResizeRight = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = rightPanelWidth;
+      const onMove = (ev: MouseEvent) => {
+        // Dragging left = wider right panel
+        setRightPanelWidth(Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, startW + startX - ev.clientX)));
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [rightPanelWidth],
+  );
 
   const { insertFromPalette } = usePaletteInsertion({ pushToast });
 
@@ -89,6 +159,10 @@ export function PageBuilder() {
     [insertFromPalette, isNarrow],
   );
 
+  const onAddSection = useCallback(() => {
+    insertFromPaletteAndMaybeClose("section");
+  }, [insertFromPaletteAndMaybeClose]);
+
   const onSwitchDocument = useCallback(
     (nextDocId: string) => {
       const trimmed = nextDocId.trim();
@@ -116,6 +190,10 @@ export function PageBuilder() {
     const res = persistence.resetCurrentDocument();
     if (res.ok) setResetOpen(false);
   }, [persistence]);
+
+  const mainStyle = isNarrow
+    ? undefined
+    : ({ "--pb-left-w": `${leftPanelWidth}px`, "--pb-right-w": `${rightPanelWidth}px` } as CSSProperties);
 
   return (
     <div className={styles.themeRoot} style={themeStyle}>
@@ -152,7 +230,7 @@ export function PageBuilder() {
           setMobilePanel={setMobilePanel}
         />
 
-        <main className={styles.main} data-narrow={isNarrow ? "true" : "false"}>
+        <main className={styles.main} style={mainStyle} data-narrow={isNarrow ? "true" : "false"}>
           {!isNarrow ? (
             <aside className={styles.panel} aria-label="Palette">
               <div className={styles.leftPanelTabBar}>
@@ -178,6 +256,12 @@ export function PageBuilder() {
                   <LayerTree canvasBodyRef={canvasBodyRef} />
                 )}
               </div>
+              {/* Resize handle at the right edge of the left panel */}
+              <div
+                className={styles.resizeHandleRight}
+                onMouseDown={startResizeLeft}
+                aria-hidden="true"
+              />
             </aside>
           ) : null}
 
@@ -189,10 +273,17 @@ export function PageBuilder() {
             dropIntent={dnd.dropIntent}
             dropInvalid={dnd.dropInvalid}
             dropIndicator={dnd.dropIndicator}
+            onAddSection={onAddSection}
           />
 
           {!isNarrow ? (
             <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"}>
+              {/* Resize handle at the left edge of the right panel */}
+              <div
+                className={styles.resizeHandleLeft}
+                onMouseDown={startResizeRight}
+                aria-hidden="true"
+              />
               {themeOpen ? (
                 <DesignTokensPanel onClose={() => setThemeOpen(false)} />
               ) : (
@@ -273,4 +364,3 @@ export function PageBuilder() {
     </div>
   );
 }
-

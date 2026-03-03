@@ -8,6 +8,7 @@ import { useEditorStore } from "@/store";
 import type { DragPayload, DropIntent } from "@/dnd";
 import type { DropIndicatorGeometry, DropInvalidInfo } from "../hooks/usePageBuilderDnd";
 import { buildSelectionBreadcrumb } from "../pageBuilderUtils";
+import { EmptyCanvas } from "./EmptyCanvas";
 
 import styles from "../PageBuilder.module.css";
 
@@ -19,8 +20,18 @@ export function PageBuilderCanvas(props: {
   dropIntent: DropIntent | null;
   dropInvalid: DropInvalidInfo | null;
   dropIndicator: DropIndicatorGeometry | null;
+  onAddSection: () => void;
 }) {
-  const { canvasFrameRef, canvasBodyRef, focusCanvasFrame, activeDrag, dropIntent, dropInvalid, dropIndicator } = props;
+  const {
+    canvasFrameRef,
+    canvasBodyRef,
+    focusCanvasFrame,
+    activeDrag,
+    dropIntent,
+    dropInvalid,
+    dropIndicator,
+    onAddSection,
+  } = props;
   const doc = useEditorStore((s) => s.doc);
   const mode = useEditorStore((s) => s.mode);
   const breakpoint = useEditorStore((s) => s.breakpoint);
@@ -94,6 +105,10 @@ export function PageBuilderCanvas(props: {
     [focusCanvasFrame],
   );
 
+  // Show the empty canvas state when the page root has no children and we're in edit mode.
+  const rootNode = doc.nodes[doc.rootId];
+  const isEmpty = !isPreview && rootNode != null && rootNode.children.length === 0;
+
   return (
     <section className={styles.canvas} aria-label="Canvas">
       <div
@@ -116,24 +131,28 @@ export function PageBuilderCanvas(props: {
           </div>
         ) : null}
         <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
-          <RenderDocument
-            doc={doc}
-            mode={renderMode}
-            breakpoint={breakpoint}
-            disableNavigation={isPreview}
-            selectedId={renderMode === "editor" ? selectedId : null}
-            hoveredId={renderMode === "editor" ? hoveredId : null}
-            enableDnd={renderMode === "editor" ? dndEnabled : false}
-            draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
-            dropTargetId={dropIntent?.parentId ?? null}
-            dropInvalidId={dropInvalid?.overId ?? null}
-            inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
-            onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
-            onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
-            onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
-            onSelect={renderMode === "editor" ? onSelect : undefined}
-            onHover={renderMode === "editor" ? onHover : undefined}
-          />
+          {isEmpty ? (
+            <EmptyCanvas onAddSection={onAddSection} />
+          ) : (
+            <RenderDocument
+              doc={doc}
+              mode={renderMode}
+              breakpoint={breakpoint}
+              disableNavigation={isPreview}
+              selectedId={renderMode === "editor" ? selectedId : null}
+              hoveredId={renderMode === "editor" ? hoveredId : null}
+              enableDnd={renderMode === "editor" ? dndEnabled : false}
+              draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
+              dropTargetId={dropIntent?.parentId ?? null}
+              dropInvalidId={dropInvalid?.overId ?? null}
+              inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
+              onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
+              onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
+              onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
+              onSelect={renderMode === "editor" ? onSelect : undefined}
+              onHover={renderMode === "editor" ? onHover : undefined}
+            />
+          )}
           {dropIndicator ? (
             <div
               className={dropIndicator.kind === "placeholder" ? styles.dropPlaceholder : styles.dropLine}
