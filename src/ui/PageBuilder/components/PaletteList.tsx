@@ -14,7 +14,11 @@ const PALETTE_GROUPS: { label: string; types: NodeType[] }[] = [
   },
   {
     label: "Content",
-    types: ["text", "image", "button", "spacer", "divider"],
+    types: ["text", "button", "spacer", "divider"],
+  },
+  {
+    label: "Media",
+    types: ["image", "video", "embed", "icon"],
   },
   {
     label: "Forms",

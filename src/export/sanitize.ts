@@ -1,6 +1,7 @@
 import { deepClone, isProbablySafeUrl, type Document, type NodeId } from "@/editor-core";
+import { isSafeEmbedDomain, parseVideoUrl } from "@/editor-core/mediaUtils";
 
-type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link" | "form.action";
+type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link" | "form.action" | "video.url" | "embed.url";
 
 type UnsafeUrl = {
   nodeId: NodeId;
@@ -35,6 +36,20 @@ function listUnsafeUrls(doc: Document): UnsafeUrl[] {
       const action = (n.props as { action?: unknown }).action;
       if (typeof action === "string" && action.trim() && !isProbablySafeUrl(action)) {
         unsafe.push({ nodeId: n.id, kind: "form.action", value: action });
+      }
+    }
+
+    if (n.type === "video") {
+      const url = (n.props as { url?: unknown }).url;
+      if (typeof url === "string" && url.trim() && (!isProbablySafeUrl(url) || !parseVideoUrl(url))) {
+        unsafe.push({ nodeId: n.id, kind: "video.url", value: url });
+      }
+    }
+
+    if (n.type === "embed") {
+      const url = (n.props as { url?: unknown }).url;
+      if (typeof url === "string" && url.trim() && !isSafeEmbedDomain(url)) {
+        unsafe.push({ nodeId: n.id, kind: "embed.url", value: url });
       }
     }
 
@@ -111,6 +126,14 @@ export function sanitizeDocumentForHtmlExport(doc: Document): { doc: Document; w
     }
     if (u.kind === "form.action" && node.type === "form") {
       (node.props as Record<string, unknown>).action = "";
+      continue;
+    }
+    if (u.kind === "video.url" && node.type === "video") {
+      (node.props as Record<string, unknown>).url = "";
+      continue;
+    }
+    if (u.kind === "embed.url" && node.type === "embed") {
+      (node.props as Record<string, unknown>).url = "";
       continue;
     }
     if (u.kind === "text.link" && node.type === "text") {

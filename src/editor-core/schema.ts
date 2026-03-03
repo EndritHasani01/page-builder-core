@@ -127,8 +127,35 @@ const ImagePropsSchema = z
   .object({
     src: z.string(),
     alt: z.string(),
-    fit: z.enum(["cover", "contain"]),
+    fit: z.enum(["cover", "contain", "fill"]),
     linkTo: z.string().optional(),
+    borderRadius: z.enum(["none", "sm", "md", "lg", "full"]).optional(),
+    aspectRatio: z.enum(["auto", "16:9", "4:3", "1:1"]).optional(),
+  })
+  .strict();
+
+const VideoPropsSchema = z
+  .object({
+    url: z.string(),
+    aspectRatio: z.enum(["16:9", "4:3", "1:1"]),
+    autoplay: z.boolean(),
+    loop: z.boolean(),
+  })
+  .strict();
+
+const EmbedPropsSchema = z
+  .object({
+    url: z.string(),
+    width: z.string(),
+    height: z.string(),
+  })
+  .strict();
+
+const IconPropsSchema = z
+  .object({
+    icon: z.string(),
+    size: z.number().int().min(12).max(128),
+    color: z.string(),
   })
   .strict();
 
@@ -232,6 +259,9 @@ export const NodeSchema = z.discriminatedUnion("type", [
   NodeBaseSchema.extend({ type: z.literal("button"), props: ButtonPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("spacer"), props: SpacerPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("divider"), props: DividerPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("video"), props: VideoPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("embed"), props: EmbedPropsSchema }),
+  NodeBaseSchema.extend({ type: z.literal("icon"), props: IconPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("form"), props: FormPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("textInput"), props: TextInputPropsSchema }),
   NodeBaseSchema.extend({ type: z.literal("textarea"), props: TextareaPropsSchema }),

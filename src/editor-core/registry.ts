@@ -6,6 +6,7 @@ import type {
 import type { NodeId, NodeType, ValidationIssue } from "./types";
 
 import { isProbablySafeUrl, isValidCssLengthOrVar } from "./validationUtils";
+import { isSafeEmbedDomain, parseVideoUrl } from "./mediaUtils";
 
 export const blockRegistry: BlockRegistry = {
   page: {
@@ -130,7 +131,7 @@ export const blockRegistry: BlockRegistry = {
     type: "column",
     label: "Column",
     defaultProps: {},
-    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
+    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "video", "embed", "icon", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
     inspector: {
       type: "column",
       groups: [
@@ -146,7 +147,7 @@ export const blockRegistry: BlockRegistry = {
     type: "container",
     label: "Container",
     defaultProps: { as: "div" },
-    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
+    allowedChildren: ["container", "text", "image", "button", "spacer", "divider", "video", "embed", "icon", "form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
     inspector: {
       type: "container",
       groups: [
@@ -246,7 +247,7 @@ export const blockRegistry: BlockRegistry = {
   image: {
     type: "image",
     label: "Image",
-    defaultProps: { src: "", alt: "", fit: "cover" },
+    defaultProps: { src: "", alt: "", fit: "cover", borderRadius: "none", aspectRatio: "auto" },
     allowedChildren: [],
     inspector: {
       type: "image",
@@ -254,7 +255,7 @@ export const blockRegistry: BlockRegistry = {
         {
           label: "Content",
           fields: [
-            { kind: "text", path: "props.src", label: "Source URL", required: true },
+            { kind: "text", path: "props.src", label: "Source URL", placeholder: "Paste image URL or data URI", required: true },
             { kind: "text", path: "props.alt", label: "Alt text", required: true },
             {
               kind: "select",
@@ -263,6 +264,30 @@ export const blockRegistry: BlockRegistry = {
               options: [
                 { label: "Cover", value: "cover" },
                 { label: "Contain", value: "contain" },
+                { label: "Fill", value: "fill" },
+              ],
+            },
+            {
+              kind: "select",
+              path: "props.aspectRatio",
+              label: "Aspect ratio",
+              options: [
+                { label: "Auto", value: "auto" },
+                { label: "16:9", value: "16:9" },
+                { label: "4:3", value: "4:3" },
+                { label: "1:1", value: "1:1" },
+              ],
+            },
+            {
+              kind: "select",
+              path: "props.borderRadius",
+              label: "Border radius",
+              options: [
+                { label: "None", value: "none" },
+                { label: "Small (4px)", value: "sm" },
+                { label: "Medium (8px)", value: "md" },
+                { label: "Large (16px)", value: "lg" },
+                { label: "Full (pill)", value: "full" },
               ],
             },
             { kind: "text", path: "props.linkTo", label: "Link URL (optional)" },
@@ -410,6 +435,100 @@ export const blockRegistry: BlockRegistry = {
         });
       }
       return issues;
+    },
+  },
+
+  video: {
+    type: "video",
+    label: "Video",
+    defaultProps: { url: "", aspectRatio: "16:9", autoplay: false, loop: false },
+    allowedChildren: [],
+    inspector: {
+      type: "video",
+      groups: [
+        {
+          label: "Video",
+          fields: [
+            { kind: "text", path: "props.url", label: "YouTube or Vimeo URL", placeholder: "https://youtube.com/watch?v=..." },
+            {
+              kind: "select",
+              path: "props.aspectRatio",
+              label: "Aspect ratio",
+              options: [
+                { label: "16:9 (Widescreen)", value: "16:9" },
+                { label: "4:3 (Standard)", value: "4:3" },
+                { label: "1:1 (Square)", value: "1:1" },
+              ],
+            },
+            { kind: "toggle", path: "props.autoplay", label: "Autoplay" },
+            { kind: "toggle", path: "props.loop", label: "Loop" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (node.props.url.trim() && !parseVideoUrl(node.props.url)) {
+        issues.push({
+          nodeId: node.id,
+          level: "warning",
+          message: "URL must be a valid YouTube or Vimeo video URL.",
+          fieldPath: "props.url",
+        });
+      }
+      return issues;
+    },
+  },
+
+  embed: {
+    type: "embed",
+    label: "Embed",
+    defaultProps: { url: "", width: "100%", height: "400px" },
+    allowedChildren: [],
+    inspector: {
+      type: "embed",
+      groups: [
+        {
+          label: "Embed",
+          fields: [
+            { kind: "text", path: "props.url", label: "Embed URL", placeholder: "https://..." },
+            { kind: "length", path: "props.width", label: "Width" },
+            { kind: "length", path: "props.height", label: "Height" },
+          ],
+        },
+      ],
+    },
+    validate(node) {
+      const issues: ValidationIssue[] = [];
+      if (node.props.url.trim() && !isSafeEmbedDomain(node.props.url)) {
+        issues.push({
+          nodeId: node.id,
+          level: "error",
+          message: "Embed URL domain is not in the allowed list. Allowed: YouTube, Vimeo, Google Maps, CodePen, Figma, Spotify, Twitter/X.",
+          fieldPath: "props.url",
+        });
+      }
+      return issues;
+    },
+  },
+
+  icon: {
+    type: "icon",
+    label: "Icon",
+    defaultProps: { icon: "star", size: 24, color: "currentColor" },
+    allowedChildren: [],
+    inspector: {
+      type: "icon",
+      groups: [
+        {
+          label: "Icon",
+          fields: [
+            { kind: "icon-picker", path: "props.icon", label: "Icon" },
+            { kind: "number", path: "props.size", label: "Size (px)", min: 12, max: 128, step: 1 },
+            { kind: "color", path: "props.color", label: "Color" },
+          ],
+        },
+      ],
     },
   },
 

@@ -2,6 +2,7 @@ import type { ChangeEvent } from "react";
 import { Fragment, useState } from "react";
 
 import type { Breakpoint, Document, NodeId, NodeType, StyleProps, ValidationIssue } from "@/editor-core";
+import { ICON_DATA, ICON_NAMES } from "@/icons";
 import {
   COLOR_TOKENS,
   FONT_FAMILY_TOKENS,
@@ -816,7 +817,7 @@ function StyleField(props: {
 function InspectorPropField(props: {
   nodeProps: Record<string, unknown>;
   field: {
-    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info" | "options-list";
+    kind: "text" | "number" | "select" | "color" | "length" | "toggle" | "info" | "options-list" | "icon-picker";
     path: string;
     label: string;
     min?: number;
@@ -855,6 +856,17 @@ function InspectorPropField(props: {
         options={optionsList}
         disabled={props.disabled}
         issues={props.issues}
+        onChange={props.onChange}
+      />
+    );
+  }
+
+  if (props.field.kind === "icon-picker") {
+    return (
+      <IconPickerField
+        label={props.field.label}
+        value={typeof rawValue === "string" ? rawValue : "star"}
+        disabled={props.disabled}
         onChange={props.onChange}
       />
     );
@@ -964,6 +976,106 @@ function InspectorPropField(props: {
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+// ─── IconPickerField ──────────────────────────────────────────────────────────
+
+function IconPickerField(props: {
+  label: string;
+  value: string;
+  disabled: boolean;
+  onChange: (value: unknown) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const filtered = filter.trim()
+    ? ICON_NAMES.filter((n) => n.includes(filter.trim().toLowerCase()))
+    : ICON_NAMES;
+
+  return (
+    <div className={styles.fieldRow}>
+      <div className={styles.fieldHeader}>
+        <span className={styles.fieldLabel}>{props.label}</span>
+        <span className={styles.badgeSmall}>{props.value}</span>
+      </div>
+      <input
+        type="text"
+        placeholder="Filter icons…"
+        value={filter}
+        disabled={props.disabled}
+        aria-label="Filter icons"
+        onChange={(e) => setFilter(e.target.value)}
+        style={{ marginBottom: "4px" }}
+      />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(7, 1fr)",
+          gap: "2px",
+          maxHeight: "160px",
+          overflowY: "auto",
+          border: "1px solid var(--editor-border)",
+          borderRadius: "4px",
+          padding: "4px",
+          background: "var(--editor-surface)",
+        }}
+      >
+        {filtered.map((name) => {
+          const paths = ICON_DATA[name] ?? "";
+          const isSelected = props.value === name;
+          return (
+            <button
+              key={name}
+              type="button"
+              title={name}
+              aria-label={name}
+              aria-pressed={isSelected}
+              disabled={props.disabled}
+              onClick={() => props.onChange(name)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "4px",
+                border: isSelected ? "2px solid var(--editor-accent)" : "2px solid transparent",
+                borderRadius: "4px",
+                background: isSelected ? "var(--editor-accent-muted)" : "transparent",
+                cursor: "pointer",
+                lineHeight: 0,
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                // Safe: bundled icon data, not user input
+                dangerouslySetInnerHTML={{ __html: paths }}
+              />
+            </button>
+          );
+        })}
+        {filtered.length === 0 ? (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              padding: "8px",
+              textAlign: "center",
+              color: "var(--editor-text-muted)",
+              fontSize: "11px",
+            }}
+          >
+            No icons match "{filter}"
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

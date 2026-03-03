@@ -6,6 +6,8 @@ import { CSS } from "@dnd-kit/utilities";
 
 import type { Breakpoint, Document, Node, NodeId, RichContent } from "@/editor-core";
 import { blockRegistry, buildSegmentDomNode, domToRichContent, isProbablySafeUrl } from "@/editor-core";
+import { buildVideoEmbedUrl, getVideoThumbnailUrl, isSafeEmbedDomain, parseVideoUrl } from "@/editor-core/mediaUtils";
+import { IconRenderer } from "@/icons/IconRenderer";
 
 import { containerDropId, nodeDragId, type DragPayload } from "@/dnd";
 
@@ -523,9 +525,31 @@ function renderNode(args: {
     }
 
     case "image": {
-      const imgStyle = mergeCss({ width: "100%", display: "block", objectFit: node.props.fit }, args.nodeStyle);
+      const BORDER_RADIUS_MAP: Record<string, string> = {
+        none: "0",
+        sm: "4px",
+        md: "8px",
+        lg: "16px",
+        full: "9999px",
+      };
+      const borderRadiusCss = BORDER_RADIUS_MAP[node.props.borderRadius ?? "none"] ?? "0";
+      const aspectRatioMap: Record<string, string> = { "16:9": "56.25%", "4:3": "75%", "1:1": "100%" };
+      const hasAspectRatio = node.props.aspectRatio && node.props.aspectRatio !== "auto";
+      const paddingBottom = hasAspectRatio ? aspectRatioMap[node.props.aspectRatio!] : undefined;
+
       const safeSrc = node.props.src.trim() && isProbablySafeUrl(node.props.src) ? node.props.src : "";
+      const imgStyle = mergeCss(
+        { width: "100%", display: "block", objectFit: node.props.fit, borderRadius: borderRadiusCss },
+        hasAspectRatio ? { position: "absolute", top: 0, left: 0, height: "100%" } : undefined,
+        !hasAspectRatio ? args.nodeStyle : undefined,
+      );
       const img = <img src={safeSrc || undefined} alt={node.props.alt} style={imgStyle} />;
+
+      const inner = hasAspectRatio ? (
+        <div style={{ position: "relative", paddingBottom, height: 0, overflow: "hidden", borderRadius: borderRadiusCss, ...(!hasAspectRatio ? undefined : args.nodeStyle) }}>
+          {img}
+        </div>
+      ) : img;
 
       if (mode === "editor") {
         return (
@@ -539,7 +563,7 @@ function renderNode(args: {
             onMouseLeave={args.onMouseLeave}
           >
             {args.chrome}
-            {img}
+            {inner}
           </div>
         );
       }
@@ -557,11 +581,201 @@ function renderNode(args: {
                 : undefined
             }
           >
-            {img}
+            {inner}
           </a>
         );
       }
-      return img;
+      return inner;
+    }
+
+    case "video": {
+      const aspectRatioMap: Record<string, string> = { "16:9": "56.25%", "4:3": "75%", "1:1": "100%" };
+      const paddingBottom = aspectRatioMap[node.props.aspectRatio] ?? "56.25%";
+      const containerStyle: CSSProperties = { position: "relative", paddingBottom, height: 0, overflow: "hidden", width: "100%" };
+      const iframeStyle: CSSProperties = { position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: "none" };
+
+      const videoInfo = node.props.url.trim() ? parseVideoUrl(node.props.url) : null;
+
+      if (mode === "editor") {
+        // Placeholder card — no live iframe to avoid focus/performance issues
+        const thumbnailUrl = videoInfo ? getVideoThumbnailUrl(videoInfo) : null;
+        const platformLabel = videoInfo ? (videoInfo.platform === "youtube" ? "YouTube" : "Vimeo") : null;
+        const placeholderStyle: CSSProperties = {
+          position: "relative",
+          paddingBottom,
+          height: 0,
+          overflow: "hidden",
+          background: "#111",
+          borderRadius: "4px",
+          ...args.nodeStyle,
+        };
+        const overlayStyle: CSSProperties = {
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#fff",
+          gap: "8px",
+          fontSize: "13px",
+          padding: "8px",
+          textAlign: "center",
+        };
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={placeholderStyle}>
+              {thumbnailUrl ? (
+                <img src={thumbnailUrl} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.5 }} />
+              ) : null}
+              <div style={overlayStyle}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="white" stroke="none">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                {platformLabel ? <span style={{ fontWeight: 600 }}>{platformLabel}</span> : <span style={{ opacity: 0.7 }}>No URL set</span>}
+                {node.props.url ? (
+                  <span style={{ opacity: 0.6, fontSize: "11px", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {node.props.url.length > 50 ? node.props.url.slice(0, 47) + "…" : node.props.url}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Preview / export: live responsive iframe
+      if (!videoInfo) {
+        // No valid URL — render an empty placeholder
+        return (
+          <div style={{ ...containerStyle, background: "#f0f0f0", display: "flex", alignItems: "center", justifyContent: "center", color: "#999", fontSize: "13px" }}>
+            Video URL not set
+          </div>
+        );
+      }
+
+      const embedUrl = buildVideoEmbedUrl(videoInfo, node.props.autoplay, node.props.loop);
+      return (
+        <div style={mergeCss(containerStyle, args.nodeStyle)}>
+          <iframe
+            src={embedUrl}
+            style={iframeStyle}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            title="Video"
+          />
+        </div>
+      );
+    }
+
+    case "embed": {
+      const placeholderStyle: CSSProperties = {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "8px",
+        background: "#f8f9fa",
+        border: "1px dashed #ccc",
+        borderRadius: "4px",
+        color: "#666",
+        fontSize: "13px",
+        width: node.props.width,
+        height: node.props.height,
+        padding: "16px",
+        textAlign: "center" as const,
+        overflow: "hidden",
+      };
+
+      if (mode === "editor") {
+        const isSafe = node.props.url.trim() ? isSafeEmbedDomain(node.props.url) : true;
+        return (
+          <div
+            {...args.dataAttrs}
+            className={[styles.wrapped, args.chromeClassName].filter(Boolean).join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <div style={mergeCss(placeholderStyle, args.nodeStyle)}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+              <span style={{ fontWeight: 600 }}>
+                {node.props.url ? (isSafe ? "Embed" : "⚠ Domain not allowed") : "Embed (no URL)"}
+              </span>
+              {node.props.url ? (
+                <span style={{ opacity: 0.7, fontSize: "11px", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {node.props.url.length > 50 ? node.props.url.slice(0, 47) + "…" : node.props.url}
+                </span>
+              ) : null}
+              <span style={{ opacity: 0.5, fontSize: "11px" }}>{node.props.width} × {node.props.height}</span>
+            </div>
+          </div>
+        );
+      }
+
+      const safeUrl = node.props.url.trim() && isSafeEmbedDomain(node.props.url) ? node.props.url : "";
+      if (!safeUrl) return null;
+
+      return (
+        <iframe
+          src={safeUrl}
+          width={node.props.width}
+          height={node.props.height}
+          style={mergeCss({ border: "none", display: "block" }, args.nodeStyle)}
+          sandbox="allow-scripts allow-same-origin"
+          title="Embed"
+        />
+      );
+    }
+
+    case "icon": {
+      const iconStyle = mergeCss({ display: "inline-block" }, args.nodeStyle);
+
+      if (mode === "editor") {
+        return (
+          <span
+            {...args.dataAttrs}
+            className={[styles.wrapped, styles.wrappedInline].join(" ")}
+            style={args.wrapperStyle}
+            ref={args.dndRef as never}
+            onClick={args.onSelectNode}
+            onMouseEnter={args.onMouseEnter}
+            onMouseLeave={args.onMouseLeave}
+          >
+            {args.chrome}
+            <IconRenderer
+              icon={node.props.icon}
+              size={node.props.size}
+              color={node.props.color}
+              style={iconStyle}
+            />
+          </span>
+        );
+      }
+
+      return (
+        <IconRenderer
+          icon={node.props.icon}
+          size={node.props.size}
+          color={node.props.color}
+          style={iconStyle}
+        />
+      );
     }
 
     case "button": {

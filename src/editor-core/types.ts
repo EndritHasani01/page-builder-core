@@ -109,8 +109,29 @@ export type TextProps = {
 export type ImageProps = {
   src: string;
   alt: string;
-  fit: "cover" | "contain";
+  fit: "cover" | "contain" | "fill";
   linkTo?: string;
+  borderRadius?: "none" | "sm" | "md" | "lg" | "full";
+  aspectRatio?: "auto" | "16:9" | "4:3" | "1:1";
+};
+
+export type VideoProps = {
+  url: string;
+  aspectRatio: "16:9" | "4:3" | "1:1";
+  autoplay: boolean;
+  loop: boolean;
+};
+
+export type EmbedProps = {
+  url: string;
+  width: string;
+  height: string;
+};
+
+export type IconProps = {
+  icon: string;
+  size: number;
+  color: string;
 };
 
 export type ButtonProps = {
@@ -188,6 +209,9 @@ export type NodePropsByType = {
   button: ButtonProps;
   spacer: SpacerProps;
   divider: DividerProps;
+  video: VideoProps;
+  embed: EmbedProps;
+  icon: IconProps;
   form: FormProps;
   textInput: TextInputProps;
   textarea: TextareaProps;
@@ -275,7 +299,8 @@ export type InspectorField =
   | { kind: "length"; path: string; label: string; tokens?: string[]; required?: boolean }
   | { kind: "toggle"; path: string; label: string; required?: boolean }
   | { kind: "info"; path: string; label: string; message: string }
-  | { kind: "options-list"; path: string; label: string };
+  | { kind: "options-list"; path: string; label: string }
+  | { kind: "icon-picker"; path: string; label: string };
 
 export type InspectorSection = "content" | "layout" | "spacing" | "typography" | "appearance" | "constraints";
 

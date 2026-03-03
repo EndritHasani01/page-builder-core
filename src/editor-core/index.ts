@@ -9,6 +9,8 @@ export type {
   DividerProps,
   Document,
   DocumentMeta,
+  EmbedProps,
+  IconProps,
   ImageProps,
   InlineSegment,
   InspectorField,
@@ -32,7 +34,11 @@ export type {
   TextProps,
   Theme,
   ValidationIssue,
+  VideoProps,
 } from "./types";
+
+export type { VideoInfo } from "./mediaUtils";
+export { parseVideoUrl, buildVideoEmbedUrl, getVideoThumbnailUrl, SAFE_EMBED_DOMAINS, isSafeEmbedDomain } from "./mediaUtils";
 
 export type { IdFactory } from "./ids";
 export { createDeterministicIdFactory, createNanoidFactory, parseDeterministicId } from "./ids";
