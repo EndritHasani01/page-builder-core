@@ -40,6 +40,9 @@ export type RenderDocumentProps = {
 
   /** Called when a form is submitted in preview mode (preventDefault already called). */
   onPreviewFormSubmit?: () => void;
+
+  /** Called when the user right-clicks a node in editor mode. */
+  onNodeContextMenu?: (nodeId: NodeId, e: MouseEvent) => void;
 };
 
 export function RenderDocument(props: RenderDocumentProps) {
@@ -130,6 +133,14 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
       ? () => props.onHover?.(node.parentId)
       : undefined;
 
+  const onContextMenu =
+    props.mode === "editor" && props.onNodeContextMenu
+      ? (e: MouseEvent) => {
+          e.stopPropagation();
+          props.onNodeContextMenu?.(node.id, e);
+        }
+      : undefined;
+
   const chrome = props.mode === "editor"
     ? (
       <>
@@ -169,6 +180,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
+    onContextMenu,
     children,
   });
 });
@@ -271,6 +283,13 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
   const onMouseEnter = props.onHover ? () => props.onHover?.(node.id) : undefined;
   const onMouseLeave = props.onHover ? () => props.onHover?.(node.parentId) : undefined;
 
+  const onContextMenu = props.onNodeContextMenu
+    ? (e: MouseEvent) => {
+        e.stopPropagation();
+        props.onNodeContextMenu?.(node.id, e);
+      }
+    : undefined;
+
   const chrome = (
     <>
       <button
@@ -312,6 +331,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     onSelectNode,
     onMouseEnter,
     onMouseLeave,
+    onContextMenu,
     children,
     dndRef,
   });
@@ -330,6 +350,7 @@ function renderNode(args: {
   onSelectNode?: (e: MouseEvent) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  onContextMenu?: (e: MouseEvent) => void;
   children: React.ReactNode;
   dndRef?: (el: HTMLElement | null) => void;
 
@@ -353,6 +374,7 @@ function renderNode(args: {
           style={style}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -373,6 +395,7 @@ function renderNode(args: {
           style={style}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -403,6 +426,7 @@ function renderNode(args: {
           style={style}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -430,6 +454,7 @@ function renderNode(args: {
           style={style}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -450,6 +475,7 @@ function renderNode(args: {
           style={style}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -504,6 +530,7 @@ function renderNode(args: {
           style={args.wrapperStyle}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -559,6 +586,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -629,6 +657,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -705,6 +734,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -754,6 +784,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -806,6 +837,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -877,6 +909,7 @@ function renderNode(args: {
           ref={args.dndRef as never}
           aria-hidden="true"
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -906,6 +939,7 @@ function renderNode(args: {
           style={args.wrapperStyle}
           ref={args.dndRef as never}
           onClick={args.onSelectNode}
+          onContextMenu={args.onContextMenu}
           onMouseEnter={args.onMouseEnter}
           onMouseLeave={args.onMouseLeave}
         >
@@ -926,6 +960,7 @@ function renderNode(args: {
             style={style}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -982,6 +1017,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -1040,6 +1076,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -1098,6 +1135,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -1139,6 +1177,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -1178,6 +1217,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >
@@ -1241,6 +1281,7 @@ function renderNode(args: {
             style={args.wrapperStyle}
             ref={args.dndRef as never}
             onClick={args.onSelectNode}
+            onContextMenu={args.onContextMenu}
             onMouseEnter={args.onMouseEnter}
             onMouseLeave={args.onMouseLeave}
           >

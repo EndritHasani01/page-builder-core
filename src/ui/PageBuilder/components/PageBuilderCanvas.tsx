@@ -7,8 +7,11 @@ import { useEditorStore } from "@/store";
 
 import type { DragPayload, DropIntent } from "@/dnd";
 import type { DropIndicatorGeometry, DropInvalidInfo } from "../hooks/usePageBuilderDnd";
+import { useBlockContextMenu } from "../hooks/useBlockContextMenu";
 import { buildSelectionBreadcrumb } from "../pageBuilderUtils";
+import { ContextMenu } from "./ContextMenu";
 import { EmptyCanvas } from "./EmptyCanvas";
+import { HoverActions } from "./HoverActions";
 
 import styles from "../PageBuilder.module.css";
 
@@ -23,6 +26,7 @@ export function PageBuilderCanvas(props: {
   onAddSection: () => void;
   onBrowseTemplates?: () => void;
   onPreviewFormSubmit?: () => void;
+  pushToast: (kind: "info" | "error", message: string) => void;
 }) {
   const {
     canvasFrameRef,
@@ -35,6 +39,7 @@ export function PageBuilderCanvas(props: {
     onAddSection,
     onBrowseTemplates,
     onPreviewFormSubmit,
+    pushToast,
   } = props;
   const doc = useEditorStore((s) => s.doc);
   const mode = useEditorStore((s) => s.mode);
@@ -51,6 +56,15 @@ export function PageBuilderCanvas(props: {
   const selectionBreadcrumb = useMemo(() => buildSelectionBreadcrumb(doc, selectedId), [doc, selectedId]);
 
   const [inlineTextEditingId, setInlineTextEditingId] = useState<NodeId | null>(null);
+
+  const {
+    menu: contextMenu,
+    closeMenu,
+    onNodeContextMenu,
+    onCanvasContextMenu,
+    buildBlockMenuItems,
+    buildCanvasMenuItems,
+  } = useBlockContextMenu({ pushToast, onAddSection, onBrowseTemplates });
 
   const onSelect = useCallback(
     (nodeId: NodeId) => {
@@ -134,7 +148,12 @@ export function PageBuilderCanvas(props: {
             {dropInvalid.reason}
           </div>
         ) : null}
-        <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
+        <div
+          ref={canvasBodyRef}
+          className={styles.canvasBody}
+          onClick={onCanvasClick}
+          onContextMenu={!isPreview ? (e) => onCanvasContextMenu(e.nativeEvent) : undefined}
+        >
           {isEmpty ? (
             <EmptyCanvas onAddSection={onAddSection} onBrowseTemplates={onBrowseTemplates} />
           ) : (
@@ -156,6 +175,11 @@ export function PageBuilderCanvas(props: {
               onSelect={renderMode === "editor" ? onSelect : undefined}
               onHover={renderMode === "editor" ? onHover : undefined}
               onPreviewFormSubmit={isPreview ? onPreviewFormSubmit : undefined}
+              onNodeContextMenu={
+                renderMode === "editor"
+                  ? (nodeId, e) => onNodeContextMenu(nodeId, e.nativeEvent)
+                  : undefined
+              }
             />
           )}
           {dropIndicator ? (
@@ -175,6 +199,34 @@ export function PageBuilderCanvas(props: {
           ) : null}
         </div>
       </div>
+
+      {/* Hover quick-action toolbar — shown when hovering a non-root node in edit mode */}
+      {renderMode === "editor" && hoveredId && hoveredId !== doc.rootId && !activeDrag && !inlineTextEditingId ? (
+        <HoverActions
+          hoveredId={hoveredId}
+          onDuplicate={(id) => {
+            dispatch({ type: "DUPLICATE_NODE", nodeId: id }, { historyLabel: "Duplicate" });
+          }}
+          onDelete={(id) => {
+            if (id === doc.rootId) return;
+            dispatch({ type: "DELETE_NODE", nodeId: id }, { historyLabel: "Delete" });
+          }}
+        />
+      ) : null}
+
+      {/* Context menu — shown on right-click */}
+      {contextMenu ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={
+            contextMenu.kind === "block"
+              ? buildBlockMenuItems(contextMenu.nodeId)
+              : buildCanvasMenuItems()
+          }
+          onClose={closeMenu}
+        />
+      ) : null}
     </section>
   );
 }

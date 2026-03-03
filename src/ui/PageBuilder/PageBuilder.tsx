@@ -283,6 +283,7 @@ export function PageBuilder() {
             onAddSection={onAddSection}
             onBrowseTemplates={() => setTemplateGalleryOpen(true)}
             onPreviewFormSubmit={() => pushToast("info", "Form submission is disabled in preview.")}
+            pushToast={pushToast}
           />
 
           {!isNarrow ? (
