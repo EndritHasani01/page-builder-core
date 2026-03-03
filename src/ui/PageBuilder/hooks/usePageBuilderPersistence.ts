@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { createDefaultDocument } from "@/editor-core";
+import { createDefaultDocument, type Document } from "@/editor-core";
 import type { AutosaveController, ParseDocumentErrorCode, PersistenceStatus, WorkspaceDocMeta } from "@/persistence";
 import {
   clearLocalStorage,
@@ -45,6 +45,7 @@ export type PageBuilderPersistenceApi = {
   setDocId: Dispatch<SetStateAction<string>>;
   confirmProceedIfQuotaBlocked: (actionLabel: string) => boolean;
   createNewDocument: () => { ok: true } | { ok: false; error: string };
+  createDocumentFromTemplate: (doc: Document, title: string) => { ok: true } | { ok: false; error: string };
   duplicateCurrentDocument: () => { ok: true } | { ok: false; error: string };
   deleteCurrentDocument: () => { ok: true } | { ok: false; error: string };
   clearSavedAfterQuota: (targetDocId: string) => { ok: true } | { ok: false; error: string };
@@ -248,6 +249,28 @@ export function usePageBuilderPersistence(args: {
     pushToast("info", "Created a new document.");
     return { ok: true };
   }, [activateLoadedDocument, confirmProceedIfQuotaBlocked, flushAutosaveIfEnabled, pushToast]);
+
+  const createDocumentFromTemplate = useCallback(
+    (templateDoc: Document, title: string): { ok: true } | { ok: false; error: string } => {
+      const state = editorStore.getState();
+      if (state.activeTxn) return { ok: false, error: "Cannot create a new document during an active transaction." };
+      if (!confirmProceedIfQuotaBlocked("Creating a new document")) return { ok: false, error: "Cancelled." };
+
+      flushAutosaveIfEnabled();
+
+      const created = createWorkspaceDocument({ doc: templateDoc, title: title.trim() || templateDoc.meta.title });
+      if (!created.ok) {
+        setPersistence({ state: "error", error: created.error, quota: created.quota });
+        pushToast("error", created.error);
+        return { ok: false, error: created.error };
+      }
+
+      activateLoadedDocument(created.docId, created.doc);
+      pushToast("info", `Created "${created.doc.meta.title}".`);
+      return { ok: true };
+    },
+    [activateLoadedDocument, confirmProceedIfQuotaBlocked, flushAutosaveIfEnabled, pushToast],
+  );
 
   const duplicateCurrentDocument = useCallback((): { ok: true } | { ok: false; error: string } => {
     const state = editorStore.getState();
@@ -460,6 +483,7 @@ export function usePageBuilderPersistence(args: {
     setDocId,
     confirmProceedIfQuotaBlocked,
     createNewDocument,
+    createDocumentFromTemplate,
     duplicateCurrentDocument,
     deleteCurrentDocument,
     clearSavedAfterQuota,

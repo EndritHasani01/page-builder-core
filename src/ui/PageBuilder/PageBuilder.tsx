@@ -10,13 +10,16 @@ import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
 import { Drawer } from "./components/Overlays";
 import { DesignTokensPanel } from "./components/DesignTokensPanel";
+import { GuidedTour, shouldShowTour } from "./components/GuidedTour";
 import { LayerTree } from "./components/LayerTree";
 import { PageBuilderCanvas } from "./components/PageBuilderCanvas";
 import { PageBuilderDialogs } from "./components/PageBuilderDialogs";
 import { PageBuilderInspector } from "./components/PageBuilderInspector";
 import { PageBuilderToolbar } from "./components/PageBuilderToolbar";
 import { PaletteList } from "./components/PaletteList";
+import { TemplateGallery } from "./components/TemplateGallery";
 import { ToastHost } from "./components/ToastHost";
+import { TEMPLATES } from "@/templates";
 import { usePageBuilderDnd } from "./hooks/usePageBuilderDnd";
 import {
   type PageBuilderDialog,
@@ -59,6 +62,8 @@ export function PageBuilder() {
   const [resetOpen, setResetOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
+  const [tourActive, setTourActive] = useState(() => shouldShowTour());
 
   // Panel resize state
   const [leftPanelWidth, setLeftPanelWidth] = useState(() => readSavedPanelWidths().left);
@@ -203,7 +208,9 @@ export function PageBuilder() {
           workspaceDocs={persistence.workspaceDocs}
           onSwitchDocument={onSwitchDocument}
           onCreateNewDocument={() => {
-            void persistence.createNewDocument();
+            setDialog(null);
+            setMobilePanel(null);
+            setTemplateGalleryOpen(true);
           }}
           onOpenRenameDialog={onOpenRenameDialog}
           onDuplicateCurrentDocument={() => {
@@ -232,7 +239,7 @@ export function PageBuilder() {
 
         <main className={styles.main} style={mainStyle} data-narrow={isNarrow ? "true" : "false"}>
           {!isNarrow ? (
-            <aside className={styles.panel} aria-label="Palette">
+            <aside className={styles.panel} aria-label="Palette" data-tour="palette">
               <div className={styles.leftPanelTabBar}>
                 <button
                   type="button"
@@ -274,10 +281,11 @@ export function PageBuilder() {
             dropInvalid={dnd.dropInvalid}
             dropIndicator={dnd.dropIndicator}
             onAddSection={onAddSection}
+            onBrowseTemplates={() => setTemplateGalleryOpen(true)}
           />
 
           {!isNarrow ? (
-            <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"}>
+            <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"} data-tour="inspector">
               {/* Resize handle at the left edge of the right panel */}
               <div
                 className={styles.resizeHandleLeft}
@@ -361,6 +369,25 @@ export function PageBuilder() {
           {dnd.activeDrag ? <div className={styles.dragOverlay}>{dnd.dragOverlayLabel}</div> : null}
         </DragOverlay>
       </DndContext>
+
+      {templateGalleryOpen ? (
+        <TemplateGallery
+          templates={TEMPLATES}
+          onClose={() => setTemplateGalleryOpen(false)}
+          onConfirm={(templateId, title) => {
+            const tmpl = TEMPLATES.find((t) => t.id === templateId);
+            if (!tmpl) return;
+            const idFactory = editorStore.getState().idFactory;
+            const doc = tmpl.create(idFactory);
+            const res = persistence.createDocumentFromTemplate(doc, title);
+            if (res.ok) setTemplateGalleryOpen(false);
+          }}
+        />
+      ) : null}
+
+      {tourActive ? (
+        <GuidedTour onDone={() => setTourActive(false)} />
+      ) : null}
     </div>
   );
 }

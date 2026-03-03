@@ -139,7 +139,7 @@ export function PageBuilderToolbar(props: {
             Delete
           </button>
 
-          <label className={styles.control}>
+          <label className={styles.control} data-tour="preview-toggle">
             <span className={styles.controlLabel}>Mode</span>
             <select
               value={mode}
@@ -254,7 +254,7 @@ export function PageBuilderToolbar(props: {
             Export
           </button>
 
-          <span className={styles.status} role="status" aria-label="Status">
+          <span className={styles.status} role="status" aria-label="Status" data-tour="save-status">
             {statusText}
           </span>
           {issues.length > 0 ? (

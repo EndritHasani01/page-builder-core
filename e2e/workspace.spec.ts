@@ -7,8 +7,12 @@ test("creates a new document and switching isolates edits per docId", async ({ p
   const docSelect = page.getByLabel("Document", { exact: true });
   await expect(docSelect).toHaveValue("default");
 
-  // Create a second document.
+  // Create a second document via the template gallery.
   await page.getByRole("button", { name: "New document" }).click();
+  const galleryDialog = page.getByRole("dialog", { name: "Choose a Template" });
+  await expect(galleryDialog).toBeVisible();
+  await galleryDialog.getByRole("button", { name: "Create" }).click();
+  await expect(galleryDialog).not.toBeVisible();
   await expect(docSelect).not.toHaveValue("default");
 
   const doc2Id = await docSelect.inputValue();

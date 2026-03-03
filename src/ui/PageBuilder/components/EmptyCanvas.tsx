@@ -1,6 +1,6 @@
 import styles from "../PageBuilder.module.css";
 
-export function EmptyCanvas(props: { onAddSection: () => void }) {
+export function EmptyCanvas(props: { onAddSection: () => void; onBrowseTemplates?: () => void }) {
   return (
     <div className={styles.emptyState} role="status" aria-label="Empty canvas">
       <div className={styles.emptyStateIcon} aria-hidden="true">
@@ -18,6 +18,15 @@ export function EmptyCanvas(props: { onAddSection: () => void }) {
         >
           Add Section
         </button>
+        {props.onBrowseTemplates ? (
+          <button
+            type="button"
+            className={styles.emptyStateSecondary}
+            onClick={props.onBrowseTemplates}
+          >
+            Browse Templates
+          </button>
+        ) : null}
       </div>
     </div>
   );

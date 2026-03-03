@@ -1,0 +1,92 @@
+/* Spotlight: covers the entire screen with a dark overlay,
+   but leaves a glowing cutout around the target element.
+   Uses box-shadow to punch a "hole" in the overlay. */
+.spotlight {
+  position: fixed;
+  z-index: 1100;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  transition: top 250ms ease, left 250ms ease, width 250ms ease, height 250ms ease;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 1101;
+  width: 280px;
+  background: var(--editor-surface, #ffffff);
+  border: 1px solid var(--editor-border, #e5e7eb);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  padding: 16px;
+  transition: top 250ms ease, left 250ms ease;
+  animation: tourIn var(--editor-duration-normal, 200ms) ease both;
+}
+
+@keyframes tourIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message {
+  font-size: 13px;
+  color: var(--editor-text, #111827);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stepIndicator {
+  font-size: 11px;
+  color: var(--editor-text-muted, #6b7280);
+  flex-shrink: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skipLink {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--editor-text-muted, #6b7280);
+  padding: 0;
+  text-decoration: underline;
+  transition: color var(--editor-duration-fast, 150ms);
+}
+
+.skipLink:hover {
+  color: var(--editor-text, #111827);
+}
+
+.nextBtn {
+  background: var(--editor-accent, #2563eb);
+  color: #ffffff;
+  border: none;
+  border-radius: 5px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--editor-duration-fast, 150ms);
+}
+
+.nextBtn:hover {
+  background: var(--editor-accent-hover, #1d4ed8);
+}

@@ -21,6 +21,7 @@ export function PageBuilderCanvas(props: {
   dropInvalid: DropInvalidInfo | null;
   dropIndicator: DropIndicatorGeometry | null;
   onAddSection: () => void;
+  onBrowseTemplates?: () => void;
 }) {
   const {
     canvasFrameRef,
@@ -31,6 +32,7 @@ export function PageBuilderCanvas(props: {
     dropInvalid,
     dropIndicator,
     onAddSection,
+    onBrowseTemplates,
   } = props;
   const doc = useEditorStore((s) => s.doc);
   const mode = useEditorStore((s) => s.mode);
@@ -110,7 +112,7 @@ export function PageBuilderCanvas(props: {
   const isEmpty = !isPreview && rootNode != null && rootNode.children.length === 0;
 
   return (
-    <section className={styles.canvas} aria-label="Canvas">
+    <section className={styles.canvas} aria-label="Canvas" data-tour="canvas">
       <div
         ref={canvasFrameRef}
         className={styles.canvasFrame}
@@ -132,7 +134,7 @@ export function PageBuilderCanvas(props: {
         ) : null}
         <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
           {isEmpty ? (
-            <EmptyCanvas onAddSection={onAddSection} />
+            <EmptyCanvas onAddSection={onAddSection} onBrowseTemplates={onBrowseTemplates} />
           ) : (
             <RenderDocument
               doc={doc}
