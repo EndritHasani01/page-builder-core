@@ -7,15 +7,19 @@ import { createNode } from "./nodeFactory";
 import { cloneSubtree, remapIds } from "./subtree";
 import { collectSubtreeIds, getChildIndex, getNode, wouldCreateCycle } from "./graph";
 import { STYLE_KEYS } from "./style";
+import { isProbablySafeUrl } from "./validationUtils";
 import type {
   Breakpoint,
   Document,
+  DocumentMeta,
   Node,
+  NodeConstraints,
   NodeId,
   NodePropsByType,
   NodeType,
   StyleProps,
   Subtree,
+  Theme,
   ValidationIssue,
 } from "./types";
 import { validateDocument } from "./validate";
@@ -32,12 +36,21 @@ export type DocCommand =
   | { type: "MOVE_NODE"; nodeId: NodeId; parentId: NodeId; index: number }
   | { type: "DELETE_NODE"; nodeId: NodeId }
   | { type: "DUPLICATE_NODE"; nodeId: NodeId; parentId?: NodeId; index?: number }
-  | { type: "UPDATE_META"; patch: { title?: string } }
+  | { type: "UPDATE_META"; patch: Partial<Pick<DocumentMeta, "title" | "slug" | "description" | "ogTitle" | "ogDescription" | "ogImage" | "favicon" | "canonicalUrl" | "headSnippet">> }
   | { type: "UPDATE_PROPS"; nodeId: NodeId; patch: Record<string, unknown> }
   | { type: "UPDATE_STYLE"; nodeId: NodeId; breakpoint: Breakpoint; patch: Partial<StyleProps> }
   | { type: "RESET_STYLE_BREAKPOINT"; nodeId: NodeId; breakpoint: Breakpoint }
   | { type: "SET_COLUMNS"; nodeId: NodeId; columns: number }
-  | { type: "INSERT_SUBTREE"; parentId: NodeId; index?: number; subtree: Subtree };
+  | { type: "INSERT_SUBTREE"; parentId: NodeId; index?: number; subtree: Subtree }
+  | {
+      type: "UPDATE_THEME";
+      patch: {
+        colors?: Partial<Theme["colors"]>;
+        typography?: Partial<Theme["typography"]>;
+        spacing?: Partial<Theme["spacing"]>;
+      };
+    }
+  | { type: "UPDATE_CONSTRAINTS"; nodeId: NodeId; patch: Partial<NodeConstraints> };
 
 export type ApplyDocCommandResult = {
   doc: Document;
@@ -589,20 +602,44 @@ function applyDuplicateNode(
   });
 }
 
+const URL_META_KEYS = ["ogImage", "favicon", "canonicalUrl"] as const;
+const STRING_META_KEYS = ["title", "slug", "description", "ogTitle", "ogDescription", "headSnippet"] as const;
+
 function applyUpdateMeta(doc: DraftDoc, ctx: ApplyCtx, cmd: Extract<DocCommand, { type: "UPDATE_META" }>) {
   if (!cmd.patch || typeof cmd.patch !== "object") {
     pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Meta patch must be an object." });
     return;
   }
 
-  if (Object.prototype.hasOwnProperty.call(cmd.patch, "title")) {
-    const raw = cmd.patch.title;
+  for (const key of STRING_META_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(cmd.patch, key)) continue;
+    const raw = (cmd.patch as Record<string, unknown>)[key];
     if (raw !== undefined && typeof raw !== "string") {
-      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Document title must be a string." });
+      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: `Document meta.${key} must be a string.` });
       return;
     }
     if (typeof raw === "string") {
-      doc.meta.title = raw;
+      (doc.meta as Record<string, unknown>)[key] = raw;
+    }
+  }
+
+  for (const key of URL_META_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(cmd.patch, key)) continue;
+    const raw = (cmd.patch as Record<string, unknown>)[key];
+    if (raw !== undefined && typeof raw !== "string") {
+      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: `Document meta.${key} must be a string.` });
+      return;
+    }
+    if (typeof raw === "string") {
+      if (raw && !isProbablySafeUrl(raw)) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "warning",
+          message: `meta.${key} may not be a safe URL: "${raw}". Only http:, https:, or relative URLs are allowed.`,
+          fieldPath: key,
+        });
+      }
+      (doc.meta as Record<string, unknown>)[key] = raw;
     }
   }
 }
@@ -711,6 +748,114 @@ function applyResetStyleBreakpoint(
   cleanupEmptyStyle(node);
 }
 
+function isValidCssColor(value: string): boolean {
+  if (typeof value !== "string") return false;
+  const v = value.trim();
+  if (!v) return false;
+  if (/^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v)) return true;
+  if (/^(rgba?|hsla?|color)\s*\(/.test(v)) return true;
+  if (/^[a-zA-Z]+$/.test(v)) return true;
+  if (v.startsWith("var(--")) return true;
+  return false;
+}
+
+function applyUpdateTheme(
+  doc: DraftDoc,
+  ctx: ApplyCtx,
+  cmd: Extract<DocCommand, { type: "UPDATE_THEME" }>,
+) {
+  const { patch } = cmd;
+
+  if (patch.colors) {
+    for (const [key, val] of Object.entries(patch.colors)) {
+      if (PROHIBITED_KEYS.has(key)) continue;
+      if (val === undefined) continue;
+      if (!isValidCssColor(val)) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: `Invalid CSS color for theme.colors.${key}: "${val}". Use hex, rgb(), hsl(), or a named color.`,
+        });
+        return;
+      }
+      (doc.theme.colors as Record<string, string>)[key] = val;
+    }
+  }
+
+  if (patch.typography) {
+    const t = patch.typography;
+    if (t.fontFamily !== undefined) {
+      if (typeof t.fontFamily !== "string" || !t.fontFamily.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Font family must be a non-empty string.",
+        });
+        return;
+      }
+      doc.theme.typography.fontFamily = t.fontFamily;
+    }
+    if (t.baseFontSize !== undefined) {
+      if (typeof t.baseFontSize !== "string" || !t.baseFontSize.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Base font size must be a non-empty CSS length string.",
+        });
+        return;
+      }
+      doc.theme.typography.baseFontSize = t.baseFontSize;
+    }
+    if (t.scale !== undefined) {
+      const num = typeof t.scale === "number" ? t.scale : Number(t.scale);
+      if (!Number.isFinite(num) || num <= 0 || num > 10) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Typography scale must be a positive finite number no greater than 10.",
+        });
+        return;
+      }
+      doc.theme.typography.scale = num;
+    }
+  }
+
+  if (patch.spacing) {
+    if (patch.spacing.unit !== undefined) {
+      if (typeof patch.spacing.unit !== "string" || !patch.spacing.unit.trim()) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "error",
+          message: "Spacing unit must be a non-empty CSS length string.",
+        });
+        return;
+      }
+      doc.theme.spacing.unit = patch.spacing.unit;
+    }
+  }
+}
+
+function applyUpdateConstraints(
+  doc: DraftDoc,
+  ctx: ApplyCtx,
+  cmd: Extract<DocCommand, { type: "UPDATE_CONSTRAINTS" }>,
+) {
+  const node = doc.nodes[cmd.nodeId];
+  if (!node) {
+    pushIssue(ctx, { nodeId: cmd.nodeId, level: "error", message: "Node does not exist." });
+    return;
+  }
+  if (!cmd.patch || typeof cmd.patch !== "object") {
+    pushIssue(ctx, { nodeId: node.id, level: "error", message: "Constraints patch must be an object." });
+    return;
+  }
+  if (!node.constraints) node.constraints = {};
+  for (const [key, value] of Object.entries(cmd.patch)) {
+    if (PROHIBITED_KEYS.has(key)) continue;
+    (node.constraints as Record<string, unknown>)[key] = value;
+  }
+}
+
 function cleanupEmptyStyle(node: Draft<Node>) {
   const style = node.style;
   if (!style) return;
@@ -762,6 +907,12 @@ export function applyDocCommandToDraft(doc: DraftDoc, cmd: DocCommand, ctx: Appl
       return;
     case "SET_COLUMNS":
       setColumnsCount(doc, ctx, cmd.nodeId, cmd.columns);
+      return;
+    case "UPDATE_THEME":
+      applyUpdateTheme(doc, ctx, cmd);
+      return;
+    case "UPDATE_CONSTRAINTS":
+      applyUpdateConstraints(doc, ctx, cmd);
       return;
     default: {
       const _exhaustive: never = cmd;

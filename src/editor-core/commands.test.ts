@@ -97,11 +97,11 @@ describe("applyCommand", () => {
     doc.nodes[lockedText.id] = lockedText;
     doc.nodes.column_1.children = [lockedText.id];
 
-    const res = applyCommand(doc, { type: "UPDATE_PROPS", nodeId: "text_1", patch: { text: "Nope" } });
+    const res = applyCommand(doc, { type: "UPDATE_PROPS", nodeId: "text_1", patch: { content: [{ text: "Nope" }] } });
     expect(res.changed).toBe(false);
     expect(res.doc.nodes.text_1?.type).toBe("text");
     if (res.doc.nodes.text_1?.type === "text") {
-      expect(res.doc.nodes.text_1.props.text).toBe("Text");
+      expect(res.doc.nodes.text_1.props.content[0]?.text).toBe("Text");
     }
     expect(res.issues.some((i) => i.message.toLowerCase().includes("locked"))).toBe(true);
   });
@@ -164,5 +164,114 @@ describe("applyCommand", () => {
 
     expect(cleared.nodes.column_1.style?.md).toBeUndefined();
     expect(cleared.nodes.column_1.style?.base.padding).toBe("8px");
+  });
+
+  test("UPDATE_THEME deep-merges color patch without clobbering other tokens", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const originalText = doc.theme.colors.text;
+    const originalBorder = doc.theme.colors.border;
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { colors: { primary: "#ff0000" } },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.theme.colors.primary).toBe("#ff0000");
+    expect(res.doc.theme.colors.text).toBe(originalText);
+    expect(res.doc.theme.colors.border).toBe(originalBorder);
+  });
+
+  test("UPDATE_THEME updates typography and spacing independently", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+
+    const withFont = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { typography: { baseFontSize: "18px" } },
+    }).doc;
+
+    expect(withFont.theme.typography.baseFontSize).toBe("18px");
+    expect(withFont.theme.typography.fontFamily).toBe(doc.theme.typography.fontFamily);
+
+    const withUnit = applyCommand(withFont, {
+      type: "UPDATE_THEME",
+      patch: { spacing: { unit: "8px" } },
+    }).doc;
+
+    expect(withUnit.theme.spacing.unit).toBe("8px");
+    expect(withUnit.theme.typography.baseFontSize).toBe("18px");
+  });
+
+  test("UPDATE_THEME rejects an invalid CSS color", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const originalPrimary = doc.theme.colors.primary;
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { colors: { primary: "not-a-color-12345" } },
+    });
+
+    expect(res.changed).toBe(false);
+    expect(res.doc.theme.colors.primary).toBe(originalPrimary);
+    expect(res.issues.some((i) => i.level === "error")).toBe(true);
+  });
+
+  test("UPDATE_THEME rejects an empty font family", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+
+    const res = applyCommand(doc, {
+      type: "UPDATE_THEME",
+      patch: { typography: { fontFamily: "   " } },
+    });
+
+    expect(res.changed).toBe(false);
+    expect(res.issues.some((i) => i.level === "error")).toBe(true);
+  });
+
+  test("UPDATE_META stores description, ogTitle, and ogImage in doc.meta", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: {
+        description: "A short description",
+        ogTitle: "Open Graph Title",
+        ogImage: "https://example.com/og.png",
+      },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.description).toBe("A short description");
+    expect(res.doc.meta.ogTitle).toBe("Open Graph Title");
+    expect(res.doc.meta.ogImage).toBe("https://example.com/og.png");
+    expect(res.issues).toHaveLength(0);
+  });
+
+  test("UPDATE_META emits a warning for an unsafe URL in ogImage but still stores it", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: { ogImage: "javascript:alert(1)" },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.ogImage).toBe("javascript:alert(1)");
+    expect(res.issues.some((i) => i.level === "warning" && i.fieldPath === "ogImage")).toBe(true);
+  });
+
+  test("UPDATE_META stores slug, canonicalUrl, and headSnippet", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: {
+        slug: "my-page",
+        canonicalUrl: "https://example.com/my-page",
+        headSnippet: '<meta name="robots" content="noindex">',
+      },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.slug).toBe("my-page");
+    expect(res.doc.meta.canonicalUrl).toBe("https://example.com/my-page");
+    expect(res.doc.meta.headSnippet).toBe('<meta name="robots" content="noindex">');
   });
 });

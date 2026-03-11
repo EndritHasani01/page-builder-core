@@ -13,7 +13,7 @@ describe("RenderDocument", () => {
     const hiddenText = createNode("text", {
       idFactory,
       parentId: "column_1",
-      props: { text: "Secret" },
+      props: { content: [{ text: "Secret" }] },
       constraints: { hidden: true },
     });
 
@@ -39,7 +39,7 @@ describe("RenderDocument", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory();
 
-    const text = createNode("text", { idFactory, parentId: "column_1", props: { text: "Hello" } });
+    const text = createNode("text", { idFactory, parentId: "column_1", props: { content: [{ text: "Hello" }] } });
     doc.nodes[text.id] = text;
     doc.nodes["column_1"].children = [text.id];
 

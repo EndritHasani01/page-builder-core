@@ -21,7 +21,15 @@ export type StyleProps = {
   gap?: string;
 
   padding?: string;
+  paddingTop?: string;
+  paddingRight?: string;
+  paddingBottom?: string;
+  paddingLeft?: string;
   margin?: string;
+  marginTop?: string;
+  marginRight?: string;
+  marginBottom?: string;
+  marginLeft?: string;
   width?: string;
   maxWidth?: string;
   minHeight?: string;
@@ -80,16 +88,50 @@ export type ContainerProps = {
   as: "div" | "main" | "header" | "footer";
 };
 
-export type TextProps = {
+export type InlineSegment = {
   text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  code?: boolean;
+  link?: { href: string };
+};
+
+export type RichContent = InlineSegment[];
+
+export type TextProps = {
+  content: RichContent;
   as: "p" | "h1" | "h2" | "h3" | "span";
+  listType?: "ul" | "ol";
 };
 
 export type ImageProps = {
   src: string;
   alt: string;
-  fit: "cover" | "contain";
+  fit: "cover" | "contain" | "fill";
   linkTo?: string;
+  borderRadius?: "none" | "sm" | "md" | "lg" | "full";
+  aspectRatio?: "auto" | "16:9" | "4:3" | "1:1";
+};
+
+export type VideoProps = {
+  url: string;
+  aspectRatio: "16:9" | "4:3" | "1:1";
+  autoplay: boolean;
+  loop: boolean;
+};
+
+export type EmbedProps = {
+  url: string;
+  width: string;
+  height: string;
+};
+
+export type IconProps = {
+  icon: string;
+  size: number;
+  color: string;
 };
 
 export type ButtonProps = {
@@ -107,6 +149,55 @@ export type DividerProps = {
   color: string;
 };
 
+export type SelectOption = { label: string; value: string };
+
+export type FormProps = {
+  action: string;
+  method: "get" | "post";
+  name?: string;
+};
+
+export type TextInputProps = {
+  label: string;
+  name: string;
+  placeholder: string;
+  inputType: "text" | "email" | "tel" | "number" | "password";
+  required: boolean;
+};
+
+export type TextareaProps = {
+  label: string;
+  name: string;
+  placeholder: string;
+  rows: number;
+  required: boolean;
+};
+
+export type SelectInputProps = {
+  label: string;
+  name: string;
+  options: SelectOption[];
+  required: boolean;
+};
+
+export type CheckboxProps = {
+  label: string;
+  name: string;
+  checked: boolean;
+};
+
+export type RadioGroupProps = {
+  label: string;
+  name: string;
+  options: SelectOption[];
+  required: boolean;
+};
+
+export type SubmitButtonProps = {
+  label: string;
+  variant: "primary" | "secondary";
+};
+
 export type NodePropsByType = {
   page: PageProps;
   section: SectionProps;
@@ -118,6 +209,16 @@ export type NodePropsByType = {
   button: ButtonProps;
   spacer: SpacerProps;
   divider: DividerProps;
+  video: VideoProps;
+  embed: EmbedProps;
+  icon: IconProps;
+  form: FormProps;
+  textInput: TextInputProps;
+  textarea: TextareaProps;
+  selectInput: SelectInputProps;
+  checkbox: CheckboxProps;
+  radioGroup: RadioGroupProps;
+  submitButton: SubmitButtonProps;
 };
 
 export type NodeByType = {
@@ -131,6 +232,14 @@ export type DocumentMeta = {
   createdAt: string;
   updatedAt: string;
   title: string;
+  slug?: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  favicon?: string;
+  canonicalUrl?: string;
+  headSnippet?: string;
 };
 
 export type Theme = {
@@ -196,10 +305,16 @@ export type InspectorField =
     }
   | { kind: "color"; path: string; label: string; required?: boolean }
   | { kind: "length"; path: string; label: string; tokens?: string[]; required?: boolean }
-  | { kind: "toggle"; path: string; label: string; required?: boolean };
+  | { kind: "toggle"; path: string; label: string; required?: boolean }
+  | { kind: "info"; path: string; label: string; message: string }
+  | { kind: "options-list"; path: string; label: string }
+  | { kind: "icon-picker"; path: string; label: string };
+
+export type InspectorSection = "content" | "layout" | "spacing" | "typography" | "appearance" | "constraints";
 
 export type InspectorGroup = {
   label: string;
+  section?: InspectorSection;
   fields: InspectorField[];
 };
 

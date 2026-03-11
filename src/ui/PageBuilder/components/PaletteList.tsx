@@ -7,14 +7,43 @@ import { paletteDragId } from "@/dnd";
 
 import styles from "../PageBuilder.module.css";
 
+const PALETTE_GROUPS: { label: string; types: NodeType[] }[] = [
+  {
+    label: "Layout",
+    types: ["section", "columns", "container"],
+  },
+  {
+    label: "Content",
+    types: ["text", "button", "spacer", "divider"],
+  },
+  {
+    label: "Media",
+    types: ["image", "video", "embed", "icon"],
+  },
+  {
+    label: "Forms",
+    types: ["form", "textInput", "textarea", "selectInput", "checkbox", "radioGroup", "submitButton"],
+  },
+];
+
 export function PaletteList(props: { disabled: boolean; onInsert: (nodeType: NodeType) => void }) {
   return (
     <ul className={styles.paletteList} aria-disabled={props.disabled}>
-      {Object.values(blockRegistry)
-        .filter((b) => b.type !== "page" && b.type !== "column")
-        .map((b) => (
-          <PaletteListItem key={b.type} block={b} disabled={props.disabled} onInsert={props.onInsert} />
-        ))}
+      {PALETTE_GROUPS.map((group) => (
+        <li key={group.label} className={styles.paletteGroup}>
+          <div className={styles.paletteGroupLabel}>{group.label}</div>
+          <ul className={styles.paletteGroupItems}>
+            {group.types.map((type) => (
+              <PaletteListItem
+                key={type}
+                block={blockRegistry[type]}
+                disabled={props.disabled}
+                onInsert={props.onInsert}
+              />
+            ))}
+          </ul>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -62,4 +91,3 @@ function PaletteListItem(props: {
     </li>
   );
 }
-

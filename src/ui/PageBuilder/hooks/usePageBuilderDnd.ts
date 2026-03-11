@@ -18,8 +18,10 @@ import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import type { Document, NodeId } from "@/editor-core";
 import { blockRegistry } from "@/editor-core";
+import { remapIds } from "@/editor-core/subtree";
 import type { DragPayload, DropIntent } from "@/dnd";
-import { computeDropIntent, parseContainerDropId, parseNodeDragId, parsePaletteDragId } from "@/dnd";
+import { computeDropIntent, parseComponentDragId, parseContainerDropId, parseNodeDragId, parsePaletteDragId } from "@/dnd";
+import { loadComponents } from "@/persistence/componentLibrary";
 import { editorStore } from "@/store";
 
 import { buildPaletteSubtree, describeNodeForA11y } from "../pageBuilderUtils";
@@ -48,6 +50,7 @@ export function usePageBuilderDnd(args: {
   dropInvalid: DropInvalidInfo | null;
   dropIndicator: DropIndicatorGeometry | null;
   dragOverlayLabel: string | null;
+  cursorPos: { x: number; y: number } | null;
   dndContextProps: PageBuilderDndContextProps;
 } {
   const { canvasBodyRef, pushToast } = args;
@@ -56,6 +59,7 @@ export function usePageBuilderDnd(args: {
   const [dropInvalid, setDropInvalid] = useState<DropInvalidInfo | null>(null);
   const [dropIndicator, setDropIndicator] = useState<DropIndicatorGeometry | null>(null);
   const [dragOverlayLabel, setDragOverlayLabel] = useState<string | null>(null);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number } | null>(null);
 
   const activeDragRef = useRef<DragPayload | null>(null);
   const dropIntentRef = useRef<DropIntent | null>(null);
@@ -70,6 +74,7 @@ export function usePageBuilderDnd(args: {
     setDropInvalid(null);
     setDropIndicator(null);
     setDragOverlayLabel(null);
+    setCursorPos(null);
     dragStartPoint.current = null;
     lastIntentKey.current = null;
     activeDragRef.current = null;
@@ -105,6 +110,12 @@ export function usePageBuilderDnd(args: {
       if (nodeId) {
         const node = editorStore.getState().doc.nodes[nodeId];
         if (node) return `${blockRegistry[node.type].label} block`;
+      }
+
+      const componentId = parseComponentDragId(activeId);
+      if (componentId) {
+        const comp = loadComponents().find((c) => c.id === componentId);
+        if (comp) return `${comp.name} component`;
       }
 
       return "block";
@@ -188,6 +199,15 @@ export function usePageBuilderDnd(args: {
 
   const updateDropFromEvent = useCallback(
     (payload: DragPayload, event: DragMoveEvent | DragEndEvent) => {
+      // Track cursor position for the DragTooltip
+      const start = dragStartPoint.current;
+      if (start) {
+        setCursorPos({ x: start.x + event.delta.x, y: start.y + event.delta.y });
+      } else {
+        const rect = event.active.rect.current.translated;
+        if (rect) setCursorPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      }
+
       const next = computeDropFromEvent(payload, event);
       if (next.intent) {
         const key = `${next.intent.parentId}|${next.intent.index}`;
@@ -236,7 +256,12 @@ export function usePageBuilderDnd(args: {
 
       const nodeId = parseNodeDragId(event.active.id);
       const paletteType = parsePaletteDragId(event.active.id);
-      const payload: DragPayload | null = nodeId ? { kind: "node", nodeId } : paletteType ? { kind: "palette", nodeType: paletteType } : null;
+      const componentId = parseComponentDragId(event.active.id);
+      const payload: DragPayload | null =
+        nodeId ? { kind: "node", nodeId }
+        : paletteType ? { kind: "palette", nodeType: paletteType }
+        : componentId ? { kind: "component", componentId }
+        : null;
       if (!payload) return;
 
       dragStartPoint.current = pointerFromActivatorEvent(event.activatorEvent);
@@ -251,6 +276,10 @@ export function usePageBuilderDnd(args: {
 
       if (payload.kind === "palette") {
         setDragOverlayLabel(`Add ${blockRegistry[payload.nodeType].label}`);
+      } else if (payload.kind === "component") {
+        const comps = loadComponents();
+        const comp = comps.find((c) => c.id === payload.componentId);
+        setDragOverlayLabel(comp ? `Add ${comp.name}` : "Add component");
       } else {
         const node = state.doc.nodes[payload.nodeId];
         setDragOverlayLabel(node ? `Move ${blockRegistry[node.type].label}` : "Move");
@@ -299,6 +328,18 @@ export function usePageBuilderDnd(args: {
         const subtree = buildPaletteSubtree(payload.nodeType, state.idFactory);
         state.beginTransaction(`DnD add ${blockRegistry[payload.nodeType].label}`);
         state.dispatch({ type: "INSERT_SUBTREE", parentId: intent.parentId, index: intent.index, subtree });
+        state.commitTransaction();
+      } else if (payload.kind === "component") {
+        const comps = loadComponents();
+        const comp = comps.find((c) => c.id === payload.componentId);
+        if (!comp) {
+          pushToast("error", "Component not found in library.");
+          clearDndState();
+          return;
+        }
+        const remapped = remapIds(comp.subtree, state.idFactory);
+        state.beginTransaction(`DnD add ${comp.name}`);
+        state.dispatch({ type: "INSERT_SUBTREE", parentId: intent.parentId, index: intent.index, subtree: remapped });
         state.commitTransaction();
       } else {
         const moving = state.doc.nodes[payload.nodeId];
@@ -354,7 +395,7 @@ export function usePageBuilderDnd(args: {
     ],
   );
 
-  return { activeDrag, dropIntent, dropInvalid, dropIndicator, dragOverlayLabel, dndContextProps };
+  return { activeDrag, dropIntent, dropInvalid, dropIndicator, dragOverlayLabel, cursorPos, dndContextProps };
 }
 
 function isSameDropIndicator(a: DropIndicatorGeometry | null, b: DropIndicatorGeometry | null): boolean {

@@ -9,10 +9,14 @@ export type {
   DividerProps,
   Document,
   DocumentMeta,
+  EmbedProps,
+  IconProps,
   ImageProps,
+  InlineSegment,
   InspectorField,
   InspectorGroup,
   InspectorSchema,
+  InspectorSection,
   Node,
   NodeByType,
   NodeConstraints,
@@ -21,6 +25,7 @@ export type {
   NodeType,
   PageProps,
   Responsive,
+  RichContent,
   SchemaVersion,
   SectionProps,
   SpacerProps,
@@ -29,7 +34,11 @@ export type {
   TextProps,
   Theme,
   ValidationIssue,
+  VideoProps,
 } from "./types";
+
+export type { VideoInfo } from "./mediaUtils";
+export { parseVideoUrl, buildVideoEmbedUrl, getVideoThumbnailUrl, SAFE_EMBED_DOMAINS, isSafeEmbedDomain } from "./mediaUtils";
 
 export type { IdFactory } from "./ids";
 export { createDeterministicIdFactory, createNanoidFactory, parseDeterministicId } from "./ids";
@@ -77,3 +86,11 @@ export {
 } from "./commands";
 
 export { collectSubtreeIds, getChildIndex, getNode, getParent, wouldCreateCycle } from "./graph";
+
+export {
+  buildSegmentDomNode,
+  domToRichContent,
+  mergeAdjacentSegments,
+  plainTextToRichContent,
+  richContentToPlainText,
+} from "./richTextUtils";

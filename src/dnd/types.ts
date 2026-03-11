@@ -8,6 +8,10 @@ export type DragPayload =
   | {
       kind: "node";
       nodeId: NodeId;
+    }
+  | {
+      kind: "component";
+      componentId: string;
     };
 
 export type DropTarget = {

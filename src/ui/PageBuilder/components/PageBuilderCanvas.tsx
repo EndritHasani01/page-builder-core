@@ -1,13 +1,18 @@
 import type { MouseEvent, RefObject } from "react";
 import { useCallback, useId, useMemo, useState } from "react";
 
-import type { NodeId } from "@/editor-core";
+import type { NodeId, RichContent } from "@/editor-core";
 import { RenderDocument } from "@/renderer";
 import { useEditorStore } from "@/store";
 
 import type { DragPayload, DropIntent } from "@/dnd";
 import type { DropIndicatorGeometry, DropInvalidInfo } from "../hooks/usePageBuilderDnd";
+import { useBlockContextMenu } from "../hooks/useBlockContextMenu";
 import { buildSelectionBreadcrumb } from "../pageBuilderUtils";
+import { ContextMenu } from "./ContextMenu";
+import { DragTooltip } from "./DragTooltip";
+import { EmptyCanvas } from "./EmptyCanvas";
+import { HoverActions } from "./HoverActions";
 
 import styles from "../PageBuilder.module.css";
 
@@ -19,12 +24,31 @@ export function PageBuilderCanvas(props: {
   dropIntent: DropIntent | null;
   dropInvalid: DropInvalidInfo | null;
   dropIndicator: DropIndicatorGeometry | null;
+  onAddSection: () => void;
+  onBrowseTemplates?: () => void;
+  onPreviewFormSubmit?: () => void;
+  onSaveToLibrary?: (nodeId: NodeId) => void;
+  pushToast: (kind: "info" | "error", message: string) => void;
 }) {
-  const { canvasFrameRef, canvasBodyRef, focusCanvasFrame, activeDrag, dropIntent, dropInvalid, dropIndicator } = props;
+  const {
+    canvasFrameRef,
+    canvasBodyRef,
+    focusCanvasFrame,
+    activeDrag,
+    dropIntent,
+    dropInvalid,
+    dropIndicator,
+    onAddSection,
+    onBrowseTemplates,
+    onPreviewFormSubmit,
+    onSaveToLibrary,
+    pushToast,
+  } = props;
   const doc = useEditorStore((s) => s.doc);
   const mode = useEditorStore((s) => s.mode);
   const breakpoint = useEditorStore((s) => s.breakpoint);
   const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const hoveredId = useEditorStore((s) => s.hoveredId);
   const activeTxn = useEditorStore((s) => s.activeTxn);
   const dispatch = useEditorStore((s) => s.dispatch);
@@ -37,9 +61,22 @@ export function PageBuilderCanvas(props: {
 
   const [inlineTextEditingId, setInlineTextEditingId] = useState<NodeId | null>(null);
 
+  const {
+    menu: contextMenu,
+    closeMenu,
+    onNodeContextMenu,
+    onCanvasContextMenu,
+    buildBlockMenuItems,
+    buildCanvasMenuItems,
+  } = useBlockContextMenu({ pushToast, onAddSection, onBrowseTemplates, onSaveToLibrary });
+
   const onSelect = useCallback(
-    (nodeId: NodeId) => {
-      dispatch({ type: "SET_SELECTED", nodeId });
+    (nodeId: NodeId, shift?: boolean) => {
+      if (shift) {
+        dispatch({ type: "SHIFT_SELECT", nodeId });
+      } else {
+        dispatch({ type: "SET_SELECTED", nodeId });
+      }
     },
     [dispatch],
   );
@@ -74,12 +111,12 @@ export function PageBuilderCanvas(props: {
   );
 
   const onCommitInlineTextEdit = useCallback(
-    (nodeId: NodeId, nextText: string) => {
+    (nodeId: NodeId, nextContent: RichContent) => {
       if (isPreview) return;
       setInlineTextEditingId(null);
       dispatch(
-        { type: "UPDATE_PROPS", nodeId, patch: { text: nextText } },
-        { historyLabel: "Edit", coalesceKey: `props:${nodeId}:text:inline` },
+        { type: "UPDATE_PROPS", nodeId, patch: { content: nextContent } },
+        { historyLabel: "Edit", coalesceKey: `props:${nodeId}:content:inline` },
       );
       focusCanvasFrame();
     },
@@ -94,8 +131,12 @@ export function PageBuilderCanvas(props: {
     [focusCanvasFrame],
   );
 
+  // Show the empty canvas state when the page root has no children and we're in edit mode.
+  const rootNode = doc.nodes[doc.rootId];
+  const isEmpty = !isPreview && rootNode != null && rootNode.children.length === 0;
+
   return (
-    <section className={styles.canvas} aria-label="Canvas">
+    <section className={styles.canvas} aria-label="Canvas" data-tour="canvas">
       <div
         ref={canvasFrameRef}
         className={styles.canvasFrame}
@@ -108,49 +149,88 @@ export function PageBuilderCanvas(props: {
       >
         <div className={styles.canvasTitle}>Canvas ({mode})</div>
         <div id={selectionDescId} className={styles.selectionBreadcrumb} aria-live="polite">
-          {selectionBreadcrumb}
+          {selectedIds.length > 1
+            ? `${selectedIds.length} selected`
+            : selectionBreadcrumb}
         </div>
         {dropInvalid ? (
           <div className={styles.dropInvalidMessage} role="status" aria-label="Invalid drop target">
             {dropInvalid.reason}
           </div>
         ) : null}
-        <div ref={canvasBodyRef} className={styles.canvasBody} onClick={onCanvasClick}>
-          <RenderDocument
-            doc={doc}
-            mode={renderMode}
-            breakpoint={breakpoint}
-            disableNavigation={isPreview}
-            selectedId={renderMode === "editor" ? selectedId : null}
-            hoveredId={renderMode === "editor" ? hoveredId : null}
-            enableDnd={renderMode === "editor" ? dndEnabled : false}
-            draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
-            dropTargetId={dropIntent?.parentId ?? null}
-            dropInvalidId={dropInvalid?.overId ?? null}
-            inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
-            onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
-            onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
-            onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
-            onSelect={renderMode === "editor" ? onSelect : undefined}
-            onHover={renderMode === "editor" ? onHover : undefined}
-          />
-          {dropIndicator ? (
-            <div
-              className={dropIndicator.kind === "placeholder" ? styles.dropPlaceholder : styles.dropLine}
-              style={{
-                left: dropIndicator.left,
-                top: dropIndicator.top,
-                width: dropIndicator.width,
-                height: dropIndicator.height,
-              }}
-              data-drop-indicator="true"
-              data-drop-parent={dropIndicator.parentId}
-              data-drop-index={String(dropIndicator.index)}
-              data-drop-axis={dropIndicator.axis}
+        <div
+          ref={canvasBodyRef}
+          className={styles.canvasBody}
+          onClick={onCanvasClick}
+          onContextMenu={!isPreview ? (e) => onCanvasContextMenu(e.nativeEvent) : undefined}
+        >
+          {isEmpty ? (
+            <EmptyCanvas onAddSection={onAddSection} onBrowseTemplates={onBrowseTemplates} />
+          ) : (
+            <RenderDocument
+              doc={doc}
+              mode={renderMode}
+              breakpoint={breakpoint}
+              disableNavigation={isPreview}
+              selectedId={renderMode === "editor" ? selectedId : null}
+              selectedIds={renderMode === "editor" ? selectedIds : null}
+              hoveredId={renderMode === "editor" ? hoveredId : null}
+              enableDnd={renderMode === "editor" ? dndEnabled : false}
+              draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
+              dropTargetId={dropIntent?.parentId ?? null}
+              dropInvalidId={dropInvalid?.overId ?? null}
+              dropSlotIntent={
+                renderMode === "editor" && dropIndicator
+                  ? { parentId: dropIndicator.parentId, index: dropIndicator.index, axis: dropIndicator.axis }
+                  : null
+              }
+              inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
+              onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
+              onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
+              onCancelInlineTextEdit={renderMode === "editor" ? onCancelInlineTextEdit : undefined}
+              onSelect={renderMode === "editor" ? onSelect : undefined}
+              onHover={renderMode === "editor" ? onHover : undefined}
+              onPreviewFormSubmit={isPreview ? onPreviewFormSubmit : undefined}
+              onNodeContextMenu={
+                renderMode === "editor"
+                  ? (nodeId, e) => onNodeContextMenu(nodeId, e.nativeEvent)
+                  : undefined
+              }
             />
-          ) : null}
+          )}
         </div>
       </div>
+
+      {/* Hover quick-action toolbar — shown when hovering a non-root node in edit mode */}
+      {renderMode === "editor" && hoveredId && hoveredId !== doc.rootId && !activeDrag && !inlineTextEditingId ? (
+        <HoverActions
+          hoveredId={hoveredId}
+          onDuplicate={(id) => {
+            dispatch({ type: "DUPLICATE_NODE", nodeId: id }, { historyLabel: "Duplicate" });
+          }}
+          onDelete={(id) => {
+            if (id === doc.rootId) return;
+            dispatch({ type: "DELETE_NODE", nodeId: id }, { historyLabel: "Delete" });
+          }}
+        />
+      ) : null}
+
+      {/* Context menu — shown on right-click */}
+      {contextMenu ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={
+            contextMenu.kind === "block"
+              ? buildBlockMenuItems(contextMenu.nodeId)
+              : buildCanvasMenuItems()
+          }
+          onClose={closeMenu}
+        />
+      ) : null}
+
+      {/* Cursor-following tooltip for invalid drag targets */}
+      {activeDrag ? <DragTooltip reason={dropInvalid?.reason ?? null} /> : null}
     </section>
   );
 }

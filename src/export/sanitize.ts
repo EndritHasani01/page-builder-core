@@ -1,6 +1,7 @@
 import { deepClone, isProbablySafeUrl, type Document, type NodeId } from "@/editor-core";
+import { isSafeEmbedDomain, parseVideoUrl } from "@/editor-core/mediaUtils";
 
-type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href";
+type UnsafeUrlKind = "image.src" | "image.linkTo" | "button.href" | "text.link" | "form.action" | "video.url" | "embed.url";
 
 type UnsafeUrl = {
   nodeId: NodeId;
@@ -28,6 +29,42 @@ function listUnsafeUrls(doc: Document): UnsafeUrl[] {
       const href = (n.props as { href?: unknown }).href;
       if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
         unsafe.push({ nodeId: n.id, kind: "button.href", value: href });
+      }
+    }
+
+    if (n.type === "form") {
+      const action = (n.props as { action?: unknown }).action;
+      if (typeof action === "string" && action.trim() && !isProbablySafeUrl(action)) {
+        unsafe.push({ nodeId: n.id, kind: "form.action", value: action });
+      }
+    }
+
+    if (n.type === "video") {
+      const url = (n.props as { url?: unknown }).url;
+      if (typeof url === "string" && url.trim() && (!isProbablySafeUrl(url) || !parseVideoUrl(url))) {
+        unsafe.push({ nodeId: n.id, kind: "video.url", value: url });
+      }
+    }
+
+    if (n.type === "embed") {
+      const url = (n.props as { url?: unknown }).url;
+      if (typeof url === "string" && url.trim() && !isSafeEmbedDomain(url)) {
+        unsafe.push({ nodeId: n.id, kind: "embed.url", value: url });
+      }
+    }
+
+    if (n.type === "text") {
+      const content = (n.props as { content?: unknown }).content;
+      if (Array.isArray(content)) {
+        for (const seg of content) {
+          const segRecord = seg as Record<string, unknown>;
+          const link = segRecord?.link as Record<string, unknown> | undefined;
+          const href = link?.href as string | undefined;
+          if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
+            unsafe.push({ nodeId: n.id, kind: "text.link", value: href });
+            break; // one warning per node is enough
+          }
+        }
       }
     }
   }
@@ -85,6 +122,34 @@ export function sanitizeDocumentForHtmlExport(doc: Document): { doc: Document; w
     }
     if (u.kind === "button.href" && node.type === "button") {
       (node.props as Record<string, unknown>).href = "";
+      continue;
+    }
+    if (u.kind === "form.action" && node.type === "form") {
+      (node.props as Record<string, unknown>).action = "";
+      continue;
+    }
+    if (u.kind === "video.url" && node.type === "video") {
+      (node.props as Record<string, unknown>).url = "";
+      continue;
+    }
+    if (u.kind === "embed.url" && node.type === "embed") {
+      (node.props as Record<string, unknown>).url = "";
+      continue;
+    }
+    if (u.kind === "text.link" && node.type === "text") {
+      const content = (node.props as Record<string, unknown>).content as Array<Record<string, unknown>>;
+      if (Array.isArray(content)) {
+        (node.props as Record<string, unknown>).content = content.map((seg) => {
+          const link = seg.link as Record<string, unknown> | undefined;
+          const href = link?.href as string | undefined;
+          if (typeof href === "string" && href.trim() && !isProbablySafeUrl(href)) {
+            const { link: _removed, ...rest } = seg;
+            void _removed;
+            return rest;
+          }
+          return seg;
+        });
+      }
       continue;
     }
   }

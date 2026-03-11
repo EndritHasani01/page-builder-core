@@ -7,10 +7,13 @@ export { computeDropIntent } from "./computeIntent";
 
 export type { DndId } from "./dndIds";
 export {
+  componentDragId,
   containerDropId,
   nodeDragId,
   paletteDragId,
+  parseComponentDragId,
   parseContainerDropId,
   parseNodeDragId,
   parsePaletteDragId,
+  parseTreeRowDropId,
 } from "./dndIds";

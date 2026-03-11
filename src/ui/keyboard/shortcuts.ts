@@ -9,7 +9,14 @@ export type ShortcutAction =
   | "MOVE_UP"
   | "MOVE_DOWN"
   | "ESCAPE"
-  | "TOGGLE_MODE";
+  | "TOGGLE_MODE"
+  | "SELECT_ALL_SIBLINGS"
+  | "OPEN_COMMAND_PALETTE"
+  | "NAV_UP"
+  | "NAV_DOWN"
+  | "NAV_LEFT"
+  | "NAV_RIGHT"
+  | "NAV_ENTER";
 
 export function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -65,6 +72,16 @@ export function getShortcutAction(e: KeyboardLike): ShortcutAction | null {
 
   if (e.altKey && key === "ArrowUp") return "MOVE_UP";
   if (e.altKey && key === "ArrowDown") return "MOVE_DOWN";
+
+  if (mod && lower === "a") return "SELECT_ALL_SIBLINGS";
+
+  if (mod && lower === "k") return "OPEN_COMMAND_PALETTE";
+
+  if (!mod && !e.altKey && !e.shiftKey && key === "ArrowUp") return "NAV_UP";
+  if (!mod && !e.altKey && !e.shiftKey && key === "ArrowDown") return "NAV_DOWN";
+  if (!mod && !e.altKey && !e.shiftKey && key === "ArrowLeft") return "NAV_LEFT";
+  if (!mod && !e.altKey && !e.shiftKey && key === "ArrowRight") return "NAV_RIGHT";
+  if (!mod && !e.altKey && !e.shiftKey && key === "Enter") return "NAV_ENTER";
 
   return null;
 }

@@ -7,6 +7,7 @@ import type { PersistenceStatus, WorkspaceDocMeta } from "@/persistence";
 import type { PageBuilderDialog, PageBuilderMobilePanel } from "../hooks/usePageBuilderKeyboardShortcuts";
 import type { RecoveryInfo } from "../hooks/usePageBuilderPersistence";
 import { formatShortTime } from "../pageBuilderUtils";
+import { getAction } from "../actions";
 
 import styles from "../PageBuilder.module.css";
 
@@ -22,10 +23,14 @@ export function PageBuilderToolbar(props: {
   onOpenReset: () => void;
   onOpenRecovery: () => void;
   onClearSavedAfterQuota: (targetDocId: string) => void;
+  onGoToDashboard: () => void;
 
   autosaveEnabled: boolean;
   persistence: PersistenceStatus;
   recovery: RecoveryInfo | null;
+
+  themeOpen: boolean;
+  onToggleTheme: () => void;
 
   isNarrow: boolean;
   dialog: PageBuilderDialog;
@@ -66,6 +71,15 @@ export function PageBuilderToolbar(props: {
         <h1 className={styles.brand}>Page Builder</h1>
 
         <div className={styles.controls}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={props.onGoToDashboard}
+            aria-label="Back to dashboard"
+            title="Back to dashboard"
+          >
+            ⊞ Home
+          </button>
           <label className={styles.control}>
             <span className={styles.controlLabel}>Document</span>
             <select
@@ -136,7 +150,7 @@ export function PageBuilderToolbar(props: {
             Delete
           </button>
 
-          <label className={styles.control}>
+          <label className={styles.control} data-tour="preview-toggle">
             <span className={styles.controlLabel}>Mode</span>
             <select
               value={mode}
@@ -168,8 +182,9 @@ export function PageBuilderToolbar(props: {
             onClick={undo}
             disabled={undoStackLen === 0 || Boolean(activeTxn)}
             aria-label="Undo"
+            title={`Undo (${getAction("undo")?.shortcut ?? "Ctrl+Z"})`}
           >
-            Undo
+            Undo{getAction("undo")?.shortcut ? <kbd className={styles.shortcutHint}>{getAction("undo")!.shortcut}</kbd> : null}
           </button>
           <button
             className={styles.button}
@@ -177,8 +192,9 @@ export function PageBuilderToolbar(props: {
             onClick={redo}
             disabled={redoStackLen === 0 || Boolean(activeTxn)}
             aria-label="Redo"
+            title={`Redo (${getAction("redo")?.shortcut ?? "Ctrl+Shift+Z"})`}
           >
-            Redo
+            Redo{getAction("redo")?.shortcut ? <kbd className={styles.shortcutHint}>{getAction("redo")!.shortcut}</kbd> : null}
           </button>
 
           <button
@@ -189,8 +205,9 @@ export function PageBuilderToolbar(props: {
               props.setDialog("shortcuts");
             }}
             aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
           >
-            Shortcuts
+            Shortcuts<kbd className={styles.shortcutHint}>?</kbd>
           </button>
 
           {props.isNarrow ? (
@@ -219,6 +236,16 @@ export function PageBuilderToolbar(props: {
           ) : null}
 
           <button
+            className={props.themeOpen ? styles.buttonActive : styles.button}
+            type="button"
+            onClick={props.onToggleTheme}
+            aria-label="Toggle Design Tokens panel"
+            aria-pressed={props.themeOpen}
+          >
+            Theme
+          </button>
+
+          <button
             className={styles.button}
             type="button"
             onClick={() => {
@@ -241,7 +268,7 @@ export function PageBuilderToolbar(props: {
             Export
           </button>
 
-          <span className={styles.status} role="status" aria-label="Status">
+          <span className={styles.status} role="status" aria-label="Status" data-tour="save-status">
             {statusText}
           </span>
           {issues.length > 0 ? (

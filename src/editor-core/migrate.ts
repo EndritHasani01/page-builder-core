@@ -27,7 +27,57 @@ type Migration = {
   migrate: (raw: unknown) => unknown;
 };
 
-const MIGRATIONS: Migration[] = [];
+const MIGRATIONS: Migration[] = [
+  {
+    from: "1.0.0",
+    to: "1.1.0",
+    // Converts TextProps.text (string) to TextProps.content (InlineSegment[]).
+    // All other node types pass through unchanged.
+    migrate: (raw: unknown): unknown => {
+      if (!raw || typeof raw !== "object") return raw;
+      const doc = raw as Record<string, unknown>;
+      const meta = doc.meta as Record<string, unknown> | undefined;
+      const nodes = doc.nodes as Record<string, unknown> | undefined;
+      if (!meta || !nodes) return raw;
+
+      const nextNodes: Record<string, unknown> = {};
+      for (const [id, node] of Object.entries(nodes)) {
+        const n = node as Record<string, unknown>;
+        if (n.type === "text") {
+          const props = (n.props ?? {}) as Record<string, unknown>;
+          const text = typeof props.text === "string" ? props.text : "";
+          const { text: _removed, ...restProps } = props;
+          void _removed;
+          nextNodes[id] = {
+            ...n,
+            props: { ...restProps, content: [{ text }] },
+          };
+        } else {
+          nextNodes[id] = node;
+        }
+      }
+
+      return {
+        ...doc,
+        meta: { ...meta, schemaVersion: "1.1.0" },
+        nodes: nextNodes,
+      };
+    },
+  },
+  {
+    from: "1.1.0",
+    to: "1.2.0",
+    // No-op migration: adds optional SEO/meta fields to DocumentMeta.
+    // Existing documents continue to work without modification.
+    migrate: (raw: unknown): unknown => {
+      if (!raw || typeof raw !== "object") return raw;
+      const doc = raw as Record<string, unknown>;
+      const meta = doc.meta as Record<string, unknown> | undefined;
+      if (!meta) return raw;
+      return { ...doc, meta: { ...meta, schemaVersion: "1.2.0" } };
+    },
+  },
+];
 
 function parseSemver(version: string): { major: number; minor: number; patch: number } | null {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version.trim());

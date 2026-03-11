@@ -208,7 +208,7 @@ function generateAvailableDocId(): string {
   return `doc_${nanoid(16)}`;
 }
 
-export function createWorkspaceDocument(opts?: { docId?: string; now?: Date; title?: string }): {
+export function createWorkspaceDocument(opts?: { docId?: string; now?: Date; title?: string; doc?: Document }): {
   ok: true;
   docId: string;
   doc: Document;
@@ -221,10 +221,11 @@ export function createWorkspaceDocument(opts?: { docId?: string; now?: Date; tit
   const docId = desiredId && isDocIdAvailable(desiredId) ? desiredId : generateAvailableDocId();
   const now = opts?.now ?? new Date();
 
-  const doc = createDefaultDocument(now);
+  const doc = opts?.doc ? deepClone(opts.doc) : createDefaultDocument(now);
   if (opts?.title && opts.title.trim()) {
     doc.meta.title = opts.title.trim();
   }
+  doc.meta.updatedAt = now.toISOString();
 
   const saved = saveToLocalStorage(docId, doc, { rotateBackup: false });
   if (!saved.ok) return saved;

@@ -29,6 +29,8 @@ function resetSingletonStore() {
 describe("PageBuilder integration", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("pb:activeDocId", "default");
+    localStorage.setItem("pb:index:v1", '{"version":1,"docs":[{"id":"default","title":"Test","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}]}');
     resetSingletonStore();
   });
 
@@ -36,29 +38,25 @@ describe("PageBuilder integration", () => {
     vi.restoreAllMocks();
   });
 
-  test("editing Text in the inspector updates the canvas and coalesces history", async () => {
+  test("inline editing Text on the canvas updates the store and creates a history entry", async () => {
     render(<PageBuilder />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Save now" })).toBeEnabled());
 
     // Select a Column so palette insertion targets a valid container.
     fireEvent.click(screen.getAllByLabelText("Drag Column")[0]);
-
     fireEvent.click(screen.getByRole("button", { name: /^Text$/ }));
 
-    const inspector = within(screen.getByRole("complementary", { name: "Inspector" }));
-    const input = inspector.getByLabelText(/^Text/);
-
+    const canvas = within(screen.getByRole("region", { name: "Canvas" }));
     const undoBefore = editorStore.getState().undoStack.length;
-    const now = vi.spyOn(Date, "now").mockReturnValue(123);
 
-    fireEvent.change(input, { target: { value: "A" } });
-    fireEvent.change(input, { target: { value: "AB" } });
-    fireEvent.change(input, { target: { value: "ABC" } });
+    fireEvent.doubleClick(canvas.getByText("Text"));
 
-    now.mockRestore();
+    const editable = canvas.getByText("Text");
+    editable.textContent = "ABC";
+    fireEvent.blur(editable);
 
-    expect(screen.getByText("ABC")).toBeInTheDocument();
+    await waitFor(() => expect(canvas.getByText("ABC")).toBeInTheDocument());
     expect(editorStore.getState().undoStack.length).toBe(undoBefore + 1);
   });
 
@@ -69,24 +67,29 @@ describe("PageBuilder integration", () => {
     fireEvent.click(screen.getAllByLabelText("Drag Column")[0]);
     fireEvent.click(screen.getByRole("button", { name: /^Text$/ }));
 
-    const inspector = within(screen.getByRole("complementary", { name: "Inspector" }));
-    const input = inspector.getByLabelText(/^Text/);
-    fireEvent.change(input, { target: { value: "Hello" } });
-
     const canvas = within(screen.getByRole("region", { name: "Canvas" }));
-    expect(canvas.getByText("Hello")).toBeInTheDocument();
+
+    // Edit the text node inline on the canvas.
+    fireEvent.doubleClick(canvas.getByText("Text"));
+    const editable = canvas.getByText("Text");
+    editable.textContent = "Hello";
+    fireEvent.blur(editable);
+
+    await waitFor(() => expect(canvas.getByText("Hello")).toBeInTheDocument());
+
+    const inspector = within(screen.getByRole("complementary", { name: "Inspector" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(canvas.getByText("Text")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(canvas.queryByText("Text")).not.toBeInTheDocument();
-    expect(inspector.getByText("Page")).toBeInTheDocument();
+    expect(inspector.getByText("Page Settings")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     expect(canvas.getByText("Hello")).toBeInTheDocument();
-    expect(inspector.getByText("Page")).toBeInTheDocument();
+    expect(inspector.getByText("Page Settings")).toBeInTheDocument();
   });
 
   test("shows a storage quota banner when saving fails with QuotaExceededError", async () => {
@@ -114,7 +117,7 @@ describe("PageBuilder integration", () => {
     const imported = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     imported.meta.title = "Imported";
     const idFactory = createDeterministicIdFactory({ startAt: { text: 10 } });
-    const importedText = createNode("text", { idFactory, parentId: "column_1", props: { text: "Imported text", as: "p" } });
+    const importedText = createNode("text", { idFactory, parentId: "column_1", props: { content: [{ text: "Imported text" }], as: "p" } });
     imported.nodes[importedText.id] = importedText;
     imported.nodes.column_1.children = [importedText.id];
 
@@ -135,7 +138,7 @@ describe("PageBuilder integration", () => {
   test("import merge inserts sections with remapped ids", async () => {
     const imported = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory({ startAt: { text: 10 } });
-    const mergedText = createNode("text", { idFactory, parentId: "column_1", props: { text: "Merged text", as: "p" } });
+    const mergedText = createNode("text", { idFactory, parentId: "column_1", props: { content: [{ text: "Merged text" }], as: "p" } });
     imported.nodes[mergedText.id] = mergedText;
     imported.nodes.column_1.children = [mergedText.id];
 
@@ -211,7 +214,7 @@ describe("PageBuilder integration", () => {
       const node = textNodes[0];
       if (!node) throw new Error("Expected a Text node to exist.");
       if (node.type !== "text") throw new Error("Expected node to be of type text.");
-      expect(node.props.text).toBe("Inline edit");
+      expect(node.props.content[0]?.text).toBe("Inline edit");
     });
 
     expect(canvas.getByText("Inline edit")).toBeInTheDocument();
@@ -241,7 +244,7 @@ describe("PageBuilder integration", () => {
       const node = textNodes[0];
       if (!node) throw new Error("Expected a Text node to exist.");
       if (node.type !== "text") throw new Error("Expected node to be of type text.");
-      expect(node.props.text).toBe("Text");
+      expect(node.props.content[0]?.text).toBe("Text");
     });
 
     expect(canvas.getByText("Text")).toBeInTheDocument();

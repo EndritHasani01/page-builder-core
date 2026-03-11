@@ -1,4 +1,4 @@
-export const LATEST_SCHEMA_VERSION = "1.0.0" as const;
+export const LATEST_SCHEMA_VERSION = "1.2.0" as const;
 
 export const NODE_TYPES = [
   "page",
@@ -11,6 +11,16 @@ export const NODE_TYPES = [
   "button",
   "spacer",
   "divider",
+  "video",
+  "embed",
+  "icon",
+  "form",
+  "textInput",
+  "textarea",
+  "selectInput",
+  "checkbox",
+  "radioGroup",
+  "submitButton",
 ] as const;
 
 export const BREAKPOINTS = ["base", "sm", "md", "lg"] as const;

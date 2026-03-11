@@ -1,0 +1,48 @@
+/* Editor chrome design tokens — distinct from the user-editable document theme */
+:root {
+  /* ── Surfaces ──────────────────────────────────────────────────────────── */
+  --editor-bg: #eef0f4;               /* canvas area — lowest elevation      */
+  --editor-surface: #f6f7f9;          /* panels                              */
+  --editor-surface-raised: #ffffff;   /* toolbar, popovers, toasts           */
+
+  /* ── Borders ───────────────────────────────────────────────────────────── */
+  --editor-border: #dde1e8;
+  --editor-border-strong: #6366f1;
+
+  /* ── Text ──────────────────────────────────────────────────────────────── */
+  --editor-text: #111827;
+  --editor-text-muted: #6b7280;
+  --editor-text-disabled: #9ca3af;
+
+  /* ── Accent ────────────────────────────────────────────────────────────── */
+  --editor-accent: #6366f1;
+  --editor-accent-hover: #4f46e5;
+  --editor-accent-muted: color-mix(in srgb, #6366f1 12%, #ffffff);
+
+  /* ── Semantic ──────────────────────────────────────────────────────────── */
+  --editor-success: #16a34a;
+  --editor-success-bg: #f0fdf4;
+  --editor-success-border: #86efac;
+  --editor-error: #dc2626;
+  --editor-error-bg: #fef2f2;
+  --editor-error-border: #fca5a5;
+  --editor-warning: #d97706;
+  --editor-warning-bg: #fffbeb;
+  --editor-warning-border: #fde68a;
+  --editor-info: #2563eb;
+  --editor-info-bg: #eff6ff;
+  --editor-info-border: #93c5fd;
+
+  /* ── Animation durations ───────────────────────────────────────────────── */
+  --editor-duration-fast: 150ms;
+  --editor-duration-normal: 200ms;
+  --editor-duration-slow: 250ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --editor-duration-fast: 0ms;
+    --editor-duration-normal: 0ms;
+    --editor-duration-slow: 0ms;
+  }
+}

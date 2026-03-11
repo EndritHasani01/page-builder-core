@@ -1,0 +1,79 @@
+.menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 176px;
+  border-radius: 10px;
+  border: 1px solid var(--editor-border);
+  background: var(--editor-surface-raised);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: 4px;
+  outline: none;
+  animation: contextMenuIn var(--editor-duration-fast, 120ms) ease-out;
+}
+
+@keyframes contextMenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.separator {
+  height: 1px;
+  background: var(--editor-border);
+  margin: 4px 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 8px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--editor-text);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  gap: 16px;
+  white-space: nowrap;
+}
+
+.item:hover:not(:disabled) {
+  background: var(--editor-surface);
+}
+
+.itemDanger {
+  color: var(--editor-error);
+}
+
+.itemDanger:hover:not(:disabled) {
+  background: var(--editor-error-bg, rgba(220, 38, 38, 0.08));
+}
+
+.itemDisabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+
+.itemLabel {
+  flex: 1;
+}
+
+.itemShortcut {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--editor-text-muted);
+  opacity: 0.7;
+}

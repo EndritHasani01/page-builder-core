@@ -1,0 +1,179 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ─── Category section ─────────────────────────────────────────────────────── */
+
+.categorySection {
+  display: flex;
+  flex-direction: column;
+}
+
+.categoryHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 4px;
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.categoryLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--editor-text-muted, #6b7280);
+  flex: 1;
+}
+
+.categoryChevron {
+  font-size: 10px;
+  color: var(--editor-text-muted, #6b7280);
+  transition: transform var(--editor-duration-fast, 150ms);
+}
+
+.categoryChevron[data-collapsed="true"] {
+  transform: rotate(-90deg);
+}
+
+.categoryItems {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0 4px 6px;
+}
+
+/* ─── Component item ───────────────────────────────────────────────────────── */
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: grab;
+  position: relative;
+}
+
+.item:hover {
+  background: var(--editor-surface-raised, #f9fafb);
+}
+
+.item[data-dragging="true"] {
+  opacity: 0.4;
+}
+
+.itemIcon {
+  font-size: 13px;
+  color: var(--editor-text-muted, #6b7280);
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.itemName {
+  font-size: 12px;
+  color: var(--editor-text, #111827);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.itemType {
+  font-size: 10px;
+  color: var(--editor-text-muted, #6b7280);
+  flex-shrink: 0;
+}
+
+.menuTrigger {
+  background: none;
+  border: none;
+  padding: 2px 5px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--editor-text-muted, #6b7280);
+  border-radius: 3px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--editor-duration-fast, 150ms), background var(--editor-duration-fast, 150ms);
+  flex-shrink: 0;
+}
+
+.item:hover .menuTrigger,
+.menuTrigger:focus {
+  opacity: 1;
+}
+
+.menuTrigger:hover {
+  background: var(--editor-border, #e5e7eb);
+  color: var(--editor-text, #111827);
+}
+
+/* ─── Inline rename input ─────────────────────────────────────────────────── */
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--editor-accent, #2563eb);
+  border-radius: 3px;
+  outline: none;
+  background: var(--editor-surface, #ffffff);
+  color: var(--editor-text, #111827);
+  box-shadow: 0 0 0 2px var(--editor-accent-muted, rgba(37, 99, 235, 0.15));
+}
+
+/* ─── Dropdown menu ────────────────────────────────────────────────────────── */
+
+.dropdownWrapper {
+  position: relative;
+}
+
+.dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 2px;
+  background: var(--editor-surface, #ffffff);
+  border: 1px solid var(--editor-border, #e5e7eb);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  min-width: 130px;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--editor-text, #111827);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background var(--editor-duration-fast, 150ms);
+}
+
+.dropdownItem:hover {
+  background: var(--editor-surface-raised, #f9fafb);
+}
+
+.dropdownItemDanger {
+  color: var(--editor-error, #dc2626);
+}
+
+.dropdownItemDanger:hover {
+  background: var(--editor-error-bg, #fef2f2);
+}
