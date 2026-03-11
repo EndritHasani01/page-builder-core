@@ -64,6 +64,19 @@ const MIGRATIONS: Migration[] = [
       };
     },
   },
+  {
+    from: "1.1.0",
+    to: "1.2.0",
+    // No-op migration: adds optional SEO/meta fields to DocumentMeta.
+    // Existing documents continue to work without modification.
+    migrate: (raw: unknown): unknown => {
+      if (!raw || typeof raw !== "object") return raw;
+      const doc = raw as Record<string, unknown>;
+      const meta = doc.meta as Record<string, unknown> | undefined;
+      if (!meta) return raw;
+      return { ...doc, meta: { ...meta, schemaVersion: "1.2.0" } };
+    },
+  },
 ];
 
 function parseSemver(version: string): { major: number; minor: number; patch: number } | null {

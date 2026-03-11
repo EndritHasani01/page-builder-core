@@ -18,7 +18,7 @@ describe("parseDocumentJsonText", () => {
     const res = parseDocumentJsonText(JSON.stringify(doc));
     expect(res.ok).toBe(true);
     if (res.ok) {
-      expect(res.doc.meta.schemaVersion).toBe("1.1.0");
+      expect(res.doc.meta.schemaVersion).toBe("1.2.0");
       expect(res.doc.meta.createdAt).toBe(doc.meta.createdAt);
     }
   });

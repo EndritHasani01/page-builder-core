@@ -82,12 +82,12 @@ describe("PageBuilder integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(canvas.queryByText("Text")).not.toBeInTheDocument();
-    expect(inspector.getByText("Page")).toBeInTheDocument();
+    expect(inspector.getByText("Page Settings")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     expect(canvas.getByText("Hello")).toBeInTheDocument();
-    expect(inspector.getByText("Page")).toBeInTheDocument();
+    expect(inspector.getByText("Page Settings")).toBeInTheDocument();
   });
 
   test("shows a storage quota banner when saving fails with QuotaExceededError", async () => {

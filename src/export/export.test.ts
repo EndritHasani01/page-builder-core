@@ -9,7 +9,7 @@ describe("export", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const { json } = exportDocumentToJson(doc);
 
-    expect(json).toContain(`"schemaVersion": "1.1.0"`);
+    expect(json).toContain(`"schemaVersion": "1.2.0"`);
     expect(json).toContain(`\n  "meta": {`);
     expect(json.endsWith("\n")).toBe(false);
   });
@@ -108,5 +108,67 @@ describe("export", () => {
 
     expect(res.html).not.toContain(":root{");
     expect(res.html).not.toContain("<style>");
+  });
+
+  test("full-mode export includes meta description and OG tags when set", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.meta.description = "Test description";
+    doc.meta.ogTitle = "OG Title Override";
+    doc.meta.ogDescription = "OG Desc";
+    doc.meta.ogImage = "https://example.com/og.png";
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).toContain('<meta name="description" content="Test description">');
+    expect(res.html).toContain('<meta property="og:title" content="OG Title Override">');
+    expect(res.html).toContain('<meta property="og:description" content="OG Desc">');
+    expect(res.html).toContain('<meta property="og:image" content="https://example.com/og.png">');
+    expect(res.warnings).toEqual([]);
+  });
+
+  test("full-mode export includes favicon and canonical URL when set", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.meta.favicon = "/favicon.ico";
+    doc.meta.canonicalUrl = "https://example.com/page";
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).toContain('<link rel="icon" href="/favicon.ico">');
+    expect(res.html).toContain('<link rel="canonical" href="https://example.com/page">');
+    expect(res.warnings).toEqual([]);
+  });
+
+  test("full-mode export strips script tags from head snippet and emits a warning", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.meta.headSnippet = '<script>alert(1)</script><meta name="robots" content="noindex">';
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).not.toContain("<script>");
+    expect(res.html).not.toContain("alert(1)");
+    expect(res.html).toContain('<meta name="robots" content="noindex">');
+    expect(res.warnings.some((w) => w.includes("script"))).toBe(true);
+  });
+
+  test("full-mode export strips unsafe meta URLs and emits a warning", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.meta.ogImage = "javascript:alert(1)";
+    doc.meta.favicon = "data:text/html,<h1>XSS</h1>";
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).not.toContain("javascript:");
+    expect(res.html).not.toContain("data:");
+    expect(res.warnings.some((w) => w.includes("ogImage"))).toBe(true);
+    expect(res.warnings.some((w) => w.includes("favicon"))).toBe(true);
+  });
+
+  test("full-mode OG title falls back to page title when ogTitle is not set", async () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    doc.meta.title = "My Page Title";
+
+    const res = await exportDocumentToHtml(doc, { breakpoint: "lg", mode: "full" });
+
+    expect(res.html).toContain('<meta property="og:title" content="My Page Title">');
   });
 });

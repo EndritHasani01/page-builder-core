@@ -150,7 +150,7 @@ describe("migration 1.0.0 → 1.1.0", () => {
     }
   });
 
-  test("produces a document at schema version 1.1.0", () => {
+  test("produces a document at schema version 1.2.0", () => {
     const raw100 = {
       meta: {
         schemaVersion: "1.0.0",
@@ -172,10 +172,10 @@ describe("migration 1.0.0 → 1.1.0", () => {
     };
 
     const migrated = migrateToLatest(raw100);
-    expect(migrated.meta.schemaVersion).toBe("1.1.0");
+    expect(migrated.meta.schemaVersion).toBe("1.2.0");
   });
 
-  test("tooLarge flag: a 1.1.0 document passes through unchanged", () => {
+  test("tooLarge flag: a 1.2.0 document passes through unchanged", () => {
     const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
     const idFactory = createDeterministicIdFactory({ startAt: { text: 5 } });
     const textNode = createNode("text", {
@@ -187,7 +187,7 @@ describe("migration 1.0.0 → 1.1.0", () => {
     doc.nodes.column_1.children = [textNode.id];
 
     const migrated = migrateToLatest(doc);
-    expect(migrated.meta.schemaVersion).toBe("1.1.0");
+    expect(migrated.meta.schemaVersion).toBe("1.2.0");
     expect(migrated.nodes[textNode.id]?.type).toBe("text");
   });
 });

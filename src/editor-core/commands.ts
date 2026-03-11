@@ -7,9 +7,11 @@ import { createNode } from "./nodeFactory";
 import { cloneSubtree, remapIds } from "./subtree";
 import { collectSubtreeIds, getChildIndex, getNode, wouldCreateCycle } from "./graph";
 import { STYLE_KEYS } from "./style";
+import { isProbablySafeUrl } from "./validationUtils";
 import type {
   Breakpoint,
   Document,
+  DocumentMeta,
   Node,
   NodeConstraints,
   NodeId,
@@ -34,7 +36,7 @@ export type DocCommand =
   | { type: "MOVE_NODE"; nodeId: NodeId; parentId: NodeId; index: number }
   | { type: "DELETE_NODE"; nodeId: NodeId }
   | { type: "DUPLICATE_NODE"; nodeId: NodeId; parentId?: NodeId; index?: number }
-  | { type: "UPDATE_META"; patch: { title?: string } }
+  | { type: "UPDATE_META"; patch: Partial<Pick<DocumentMeta, "title" | "slug" | "description" | "ogTitle" | "ogDescription" | "ogImage" | "favicon" | "canonicalUrl" | "headSnippet">> }
   | { type: "UPDATE_PROPS"; nodeId: NodeId; patch: Record<string, unknown> }
   | { type: "UPDATE_STYLE"; nodeId: NodeId; breakpoint: Breakpoint; patch: Partial<StyleProps> }
   | { type: "RESET_STYLE_BREAKPOINT"; nodeId: NodeId; breakpoint: Breakpoint }
@@ -600,20 +602,44 @@ function applyDuplicateNode(
   });
 }
 
+const URL_META_KEYS = ["ogImage", "favicon", "canonicalUrl"] as const;
+const STRING_META_KEYS = ["title", "slug", "description", "ogTitle", "ogDescription", "headSnippet"] as const;
+
 function applyUpdateMeta(doc: DraftDoc, ctx: ApplyCtx, cmd: Extract<DocCommand, { type: "UPDATE_META" }>) {
   if (!cmd.patch || typeof cmd.patch !== "object") {
     pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Meta patch must be an object." });
     return;
   }
 
-  if (Object.prototype.hasOwnProperty.call(cmd.patch, "title")) {
-    const raw = cmd.patch.title;
+  for (const key of STRING_META_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(cmd.patch, key)) continue;
+    const raw = (cmd.patch as Record<string, unknown>)[key];
     if (raw !== undefined && typeof raw !== "string") {
-      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: "Document title must be a string." });
+      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: `Document meta.${key} must be a string.` });
       return;
     }
     if (typeof raw === "string") {
-      doc.meta.title = raw;
+      (doc.meta as Record<string, unknown>)[key] = raw;
+    }
+  }
+
+  for (const key of URL_META_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(cmd.patch, key)) continue;
+    const raw = (cmd.patch as Record<string, unknown>)[key];
+    if (raw !== undefined && typeof raw !== "string") {
+      pushIssue(ctx, { nodeId: doc.rootId, level: "error", message: `Document meta.${key} must be a string.` });
+      return;
+    }
+    if (typeof raw === "string") {
+      if (raw && !isProbablySafeUrl(raw)) {
+        pushIssue(ctx, {
+          nodeId: doc.rootId,
+          level: "warning",
+          message: `meta.${key} may not be a safe URL: "${raw}". Only http:, https:, or relative URLs are allowed.`,
+          fieldPath: key,
+        });
+      }
+      (doc.meta as Record<string, unknown>)[key] = raw;
     }
   }
 }

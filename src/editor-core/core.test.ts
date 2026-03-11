@@ -29,7 +29,7 @@ describe("editor-core", () => {
 
     const doc = {
       meta: {
-        schemaVersion: "1.1.0" as const,
+        schemaVersion: "1.2.0" as const,
         createdAt: "2026-02-18T12:00:00.000Z",
         updatedAt: "2026-02-18T12:00:00.000Z",
         title: "Test",

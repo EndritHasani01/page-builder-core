@@ -227,4 +227,51 @@ describe("applyCommand", () => {
     expect(res.changed).toBe(false);
     expect(res.issues.some((i) => i.level === "error")).toBe(true);
   });
+
+  test("UPDATE_META stores description, ogTitle, and ogImage in doc.meta", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: {
+        description: "A short description",
+        ogTitle: "Open Graph Title",
+        ogImage: "https://example.com/og.png",
+      },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.description).toBe("A short description");
+    expect(res.doc.meta.ogTitle).toBe("Open Graph Title");
+    expect(res.doc.meta.ogImage).toBe("https://example.com/og.png");
+    expect(res.issues).toHaveLength(0);
+  });
+
+  test("UPDATE_META emits a warning for an unsafe URL in ogImage but still stores it", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: { ogImage: "javascript:alert(1)" },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.ogImage).toBe("javascript:alert(1)");
+    expect(res.issues.some((i) => i.level === "warning" && i.fieldPath === "ogImage")).toBe(true);
+  });
+
+  test("UPDATE_META stores slug, canonicalUrl, and headSnippet", () => {
+    const doc = createDefaultDocument(new Date("2026-02-18T12:00:00.000Z"));
+    const res = applyCommand(doc, {
+      type: "UPDATE_META",
+      patch: {
+        slug: "my-page",
+        canonicalUrl: "https://example.com/my-page",
+        headSnippet: '<meta name="robots" content="noindex">',
+      },
+    });
+
+    expect(res.changed).toBe(true);
+    expect(res.doc.meta.slug).toBe("my-page");
+    expect(res.doc.meta.canonicalUrl).toBe("https://example.com/my-page");
+    expect(res.doc.meta.headSnippet).toBe('<meta name="robots" content="noindex">');
+  });
 });

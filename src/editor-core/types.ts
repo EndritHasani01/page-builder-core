@@ -232,6 +232,14 @@ export type DocumentMeta = {
   createdAt: string;
   updatedAt: string;
   title: string;
+  slug?: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  favicon?: string;
+  canonicalUrl?: string;
+  headSnippet?: string;
 };
 
 export type Theme = {

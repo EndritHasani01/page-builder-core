@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 import { BREAKPOINTS, LATEST_SCHEMA_VERSION, NODE_TYPES } from "./constants";
+import { isProbablySafeUrl } from "./validationUtils";
+
+const SafeUrlSchema = z.string().refine((v) => !v || isProbablySafeUrl(v), {
+  message: "URL is not safe or uses a disallowed protocol.",
+});
 
 const NodeIdSchema = z.string().min(1);
 
@@ -305,6 +310,14 @@ export const DocumentMetaSchema = z
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
     title: z.string(),
+    slug: z.string().optional(),
+    description: z.string().optional(),
+    ogTitle: z.string().optional(),
+    ogDescription: z.string().optional(),
+    ogImage: SafeUrlSchema.optional(),
+    favicon: SafeUrlSchema.optional(),
+    canonicalUrl: SafeUrlSchema.optional(),
+    headSnippet: z.string().optional(),
   })
   .strict();
 

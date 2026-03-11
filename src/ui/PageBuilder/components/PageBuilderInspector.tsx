@@ -2,6 +2,7 @@ import type { ChangeEvent } from "react";
 import { Fragment, useState } from "react";
 
 import type { Breakpoint, Document, NodeId, NodeType, StyleProps, ValidationIssue } from "@/editor-core";
+import { PageSettingsInspector } from "./PageSettingsInspector";
 import { ICON_DATA, ICON_NAMES } from "@/icons";
 import {
   COLOR_TOKENS,
@@ -189,6 +190,18 @@ function InspectorPanel(props: {
 }) {
   const node = props.doc.nodes[props.selectedId];
   if (!node) return null;
+
+  // Root page node gets a dedicated Page Settings view.
+  if (props.selectedId === props.doc.rootId) {
+    const disabled = props.mode === "preview";
+    return (
+      <PageSettingsInspector
+        doc={props.doc}
+        disabled={disabled}
+        dispatch={props.dispatch}
+      />
+    );
+  }
 
   const def = blockRegistry[node.type];
   const locked = Boolean(node.constraints?.locked);

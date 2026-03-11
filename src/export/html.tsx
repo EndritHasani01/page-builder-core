@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { Breakpoint, Document } from "@/editor-core";
+import { isProbablySafeUrl } from "@/editor-core/validationUtils";
 import { RenderDocument, themeToCssVars } from "@/renderer";
 
 import { sanitizeDocumentForHtmlExport } from "./sanitize";
@@ -21,6 +22,17 @@ function escapeAttr(input: string): string {
 
 function isProbablyValidLang(input: string): boolean {
   return /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(input.trim());
+}
+
+type SanitizeSnippetResult = { sanitized: string; stripped: boolean };
+
+function sanitizeHeadSnippet(raw: string): SanitizeSnippetResult {
+  // Strip <script ...>...</script> blocks (including multi-line)
+  let result = raw.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
+  // Strip inline event handler attributes (on*)
+  result = result.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi, "");
+  const stripped = result !== raw;
+  return { sanitized: result, stripped };
 }
 
 async function getRenderToStaticMarkup(): Promise<(node: ReactNode) => string> {
@@ -53,7 +65,47 @@ function buildThemeStyleBlock(doc: Document): string {
   return `<style>:root{${declarations}}</style>`;
 }
 
-function htmlShell(body: string, opts: { title: string; lang: string; themeStyle: string }): string {
+function htmlShell(
+  body: string,
+  opts: {
+    title: string;
+    lang: string;
+    themeStyle: string;
+    description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+    favicon?: string;
+    canonicalUrl?: string;
+    headSnippet?: string;
+  },
+): string {
+  const metaTags: string[] = [];
+
+  if (opts.description) {
+    metaTags.push(`<meta name="description" content="${escapeAttr(opts.description)}">`);
+  }
+
+  const ogTitleVal = opts.ogTitle || opts.title;
+  metaTags.push(`<meta property="og:title" content="${escapeAttr(ogTitleVal)}">`);
+
+  const ogDescVal = opts.ogDescription || opts.description;
+  if (ogDescVal) {
+    metaTags.push(`<meta property="og:description" content="${escapeAttr(ogDescVal)}">`);
+  }
+
+  if (opts.ogImage) {
+    metaTags.push(`<meta property="og:image" content="${escapeAttr(opts.ogImage)}">`);
+  }
+
+  if (opts.favicon) {
+    metaTags.push(`<link rel="icon" href="${escapeAttr(opts.favicon)}">`);
+  }
+
+  if (opts.canonicalUrl) {
+    metaTags.push(`<link rel="canonical" href="${escapeAttr(opts.canonicalUrl)}">`);
+  }
+
   return [
     "<!doctype html>",
     `<html lang="${escapeAttr(opts.lang)}">`,
@@ -61,13 +113,17 @@ function htmlShell(body: string, opts: { title: string; lang: string; themeStyle
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${escapeHtml(opts.title)}</title>`,
+    ...metaTags,
     opts.themeStyle,
+    opts.headSnippet ?? "",
     "</head>",
     "<body>",
     body,
     "</body>",
     "</html>",
-  ].join("");
+  ]
+    .filter((line) => line !== "")
+    .join("");
 }
 
 export async function exportDocumentToHtml(doc: Document, opts: HtmlExportOptions): Promise<HtmlExportResult> {
@@ -89,6 +145,41 @@ export async function exportDocumentToHtml(doc: Document, opts: HtmlExportOption
       ? sanitized.doc.meta.title
       : "Page";
 
-  return { html: htmlShell(body, { title, lang, themeStyle: buildThemeStyleBlock(sanitized.doc) }), warnings: sanitized.warnings };
+  const m = sanitized.doc.meta;
+  const exportWarnings: string[] = [...sanitized.warnings];
+
+  function safeMetaUrl(value: string | undefined, field: string): string | undefined {
+    if (!value) return undefined;
+    if (!isProbablySafeUrl(value)) {
+      exportWarnings.push(`meta.${field} was stripped: unsafe URL "${value}".`);
+      return undefined;
+    }
+    return value;
+  }
+
+  let sanitizedSnippet: string | undefined;
+  if (m.headSnippet) {
+    const { sanitized: clean, stripped } = sanitizeHeadSnippet(m.headSnippet);
+    if (stripped) {
+      exportWarnings.push("Custom head snippet had script tags or event handlers stripped for security.");
+    }
+    sanitizedSnippet = clean.trim() || undefined;
+  }
+
+  return {
+    html: htmlShell(body, {
+      title,
+      lang,
+      themeStyle: buildThemeStyleBlock(sanitized.doc),
+      description: m.description,
+      ogTitle: m.ogTitle,
+      ogDescription: m.ogDescription,
+      ogImage: safeMetaUrl(m.ogImage, "ogImage"),
+      favicon: safeMetaUrl(m.favicon, "favicon"),
+      canonicalUrl: safeMetaUrl(m.canonicalUrl, "canonicalUrl"),
+      headSnippet: sanitizedSnippet,
+    }),
+    warnings: exportWarnings,
+  };
 }
 
