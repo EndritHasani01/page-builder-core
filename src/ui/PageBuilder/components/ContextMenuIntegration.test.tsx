@@ -29,6 +29,8 @@ function resetSingletonStore() {
 describe("Block context menu integration", () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem("pb:activeDocId", "default");
+    localStorage.setItem("pb:index:v1", '{"version":1,"docs":[{"id":"default","title":"Test","createdAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z"}]}');
     resetSingletonStore();
   });
 

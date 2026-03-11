@@ -23,6 +23,7 @@ export function PageBuilderToolbar(props: {
   onOpenReset: () => void;
   onOpenRecovery: () => void;
   onClearSavedAfterQuota: (targetDocId: string) => void;
+  onGoToDashboard: () => void;
 
   autosaveEnabled: boolean;
   persistence: PersistenceStatus;
@@ -70,6 +71,15 @@ export function PageBuilderToolbar(props: {
         <h1 className={styles.brand}>Page Builder</h1>
 
         <div className={styles.controls}>
+          <button
+            className={styles.button}
+            type="button"
+            onClick={props.onGoToDashboard}
+            aria-label="Back to dashboard"
+            title="Back to dashboard"
+          >
+            ⊞ Home
+          </button>
           <label className={styles.control}>
             <span className={styles.controlLabel}>Document</span>
             <select

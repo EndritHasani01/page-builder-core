@@ -6,6 +6,7 @@ import { DndContext, DragOverlay } from "@dnd-kit/core";
 import type { NodeType } from "@/editor-core";
 import { blockRegistry } from "@/editor-core";
 import { themeToCssVars } from "@/renderer";
+import { getActiveWorkspaceDocId, listWorkspaceDocuments } from "@/persistence";
 import { editorStore, useEditorStore } from "@/store";
 import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
@@ -24,6 +25,7 @@ import { PaletteList } from "./components/PaletteList";
 import { SaveToLibraryModal } from "./components/SaveToLibraryModal";
 import { TemplateGallery } from "./components/TemplateGallery";
 import { ToastHost } from "./components/ToastHost";
+import { WorkspaceDashboard } from "./components/WorkspaceDashboard";
 import { cloneSubtree } from "@/editor-core/subtree";
 import { saveComponent } from "@/persistence/componentLibrary";
 import { TEMPLATES } from "@/templates";
@@ -39,6 +41,16 @@ import { getNodeLabel } from "./pageBuilderUtils";
 import { useToastHost } from "./hooks/useToastHost";
 
 import styles from "./PageBuilder.module.css";
+
+type AppView = "dashboard" | "editor";
+
+function initialView(): AppView {
+  const activeId = getActiveWorkspaceDocId();
+  if (!activeId) return "dashboard";
+  const docs = listWorkspaceDocuments();
+  if (!docs.some((d) => d.id === activeId)) return "dashboard";
+  return "editor";
+}
 
 const PANEL_WIDTHS_KEY = "pb:ui:panelWidths";
 const MIN_PANEL_W = 150;
@@ -62,6 +74,8 @@ export function PageBuilder() {
   const { toasts, pushToast, dismissToast } = useToastHost();
 
   const persistence = usePageBuilderPersistence({ pushToast });
+
+  const [view, setView] = useState<AppView>(initialView);
 
   const [leftTab, setLeftTab] = useState<"blocks" | "layers" | "library">("blocks");
   const [saveToLibraryNodeId, setSaveToLibraryNodeId] = useState<string | null>(null);
@@ -218,46 +232,149 @@ export function PageBuilder() {
     ? undefined
     : ({ "--pb-left-w": `${leftPanelWidth}px`, "--pb-right-w": `${rightPanelWidth}px` } as CSSProperties);
 
+  const goToDashboard = useCallback(() => {
+    persistence.flushAutosaveIfEnabled();
+    persistence.refreshWorkspaceDocs();
+    setView("dashboard");
+  }, [persistence]);
+
   return (
     <div className={styles.themeRoot} style={themeStyle}>
-      <DndContext {...dnd.dndContextProps}>
-        <PageBuilderToolbar
-          docId={persistence.docId}
-          workspaceDocs={persistence.workspaceDocs}
-          onSwitchDocument={onSwitchDocument}
-          onCreateNewDocument={() => {
-            setDialog(null);
-            setMobilePanel(null);
+      {view === "dashboard" ? (
+        <WorkspaceDashboard
+          onOpenDocument={(docId) => {
+            persistence.activateDocId(docId);
+            setView("editor");
+          }}
+          onCreateDocument={() => {
             setTemplateGalleryOpen(true);
           }}
-          onOpenRenameDialog={onOpenRenameDialog}
-          onDuplicateCurrentDocument={() => {
-            void persistence.duplicateCurrentDocument();
-          }}
-          onDeleteCurrentDocument={() => {
-            void persistence.deleteCurrentDocument();
-          }}
-          onSaveNow={persistence.flushAutosaveNow}
-          onOpenReset={() => setResetOpen(true)}
-          onOpenRecovery={() => persistence.setRecoveryOpen(true)}
-          onClearSavedAfterQuota={(targetDocId) => {
-            void persistence.clearSavedAfterQuota(targetDocId);
-          }}
-          autosaveEnabled={persistence.autosaveEnabled}
-          persistence={persistence.persistence}
-          recovery={persistence.recovery}
-          themeOpen={themeOpen}
-          onToggleTheme={() => setThemeOpen((o) => !o)}
-          isNarrow={isNarrow}
-          dialog={dialog}
-          setDialog={setDialog}
-          mobilePanel={mobilePanel}
-          setMobilePanel={setMobilePanel}
         />
+      ) : (
+        <DndContext {...dnd.dndContextProps}>
+          <PageBuilderToolbar
+            docId={persistence.docId}
+            workspaceDocs={persistence.workspaceDocs}
+            onSwitchDocument={onSwitchDocument}
+            onCreateNewDocument={() => {
+              setDialog(null);
+              setMobilePanel(null);
+              setTemplateGalleryOpen(true);
+            }}
+            onOpenRenameDialog={onOpenRenameDialog}
+            onDuplicateCurrentDocument={() => {
+              void persistence.duplicateCurrentDocument();
+            }}
+            onDeleteCurrentDocument={() => {
+              void persistence.deleteCurrentDocument();
+            }}
+            onSaveNow={persistence.flushAutosaveNow}
+            onOpenReset={() => setResetOpen(true)}
+            onOpenRecovery={() => persistence.setRecoveryOpen(true)}
+            onClearSavedAfterQuota={(targetDocId) => {
+              void persistence.clearSavedAfterQuota(targetDocId);
+            }}
+            autosaveEnabled={persistence.autosaveEnabled}
+            persistence={persistence.persistence}
+            recovery={persistence.recovery}
+            themeOpen={themeOpen}
+            onToggleTheme={() => setThemeOpen((o) => !o)}
+            isNarrow={isNarrow}
+            dialog={dialog}
+            setDialog={setDialog}
+            mobilePanel={mobilePanel}
+            setMobilePanel={setMobilePanel}
+            onGoToDashboard={goToDashboard}
+          />
 
-        <main className={styles.main} style={mainStyle} data-narrow={isNarrow ? "true" : "false"}>
-          {!isNarrow ? (
-            <aside className={styles.panel} aria-label="Palette" data-tour="palette">
+          <main className={styles.main} style={mainStyle} data-narrow={isNarrow ? "true" : "false"}>
+            {!isNarrow ? (
+              <aside className={styles.panel} aria-label="Palette" data-tour="palette">
+                <div className={styles.leftPanelTabBar}>
+                  <button
+                    type="button"
+                    className={leftTab === "blocks" ? styles.tabButtonActive : styles.tabButton}
+                    onClick={() => setLeftTab("blocks")}
+                  >
+                    Blocks
+                  </button>
+                  <button
+                    type="button"
+                    className={leftTab === "layers" ? styles.tabButtonActive : styles.tabButton}
+                    onClick={() => setLeftTab("layers")}
+                  >
+                    Layers
+                  </button>
+                  <button
+                    type="button"
+                    className={leftTab === "library" ? styles.tabButtonActive : styles.tabButton}
+                    onClick={() => setLeftTab("library")}
+                    data-testid="library-tab-btn"
+                  >
+                    Library
+                  </button>
+                </div>
+                <div className={styles.panelBody}>
+                  {leftTab === "blocks" ? (
+                    <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+                  ) : leftTab === "layers" ? (
+                    <LayerTree canvasBodyRef={canvasBodyRef} />
+                  ) : (
+                    <ComponentLibrary
+                      key={libraryVersion}
+                      disabled={!dndEnabled}
+                      onChanged={() => setLibraryVersion((v) => v + 1)}
+                    />
+                  )}
+                </div>
+                {/* Resize handle at the right edge of the left panel */}
+                <div
+                  className={styles.resizeHandleRight}
+                  onMouseDown={startResizeLeft}
+                  aria-hidden="true"
+                />
+              </aside>
+            ) : null}
+
+            <PageBuilderCanvas
+              canvasFrameRef={canvasFrameRef}
+              canvasBodyRef={canvasBodyRef}
+              focusCanvasFrame={focusCanvasFrame}
+              activeDrag={dnd.activeDrag}
+              dropIntent={dnd.dropIntent}
+              dropInvalid={dnd.dropInvalid}
+              dropIndicator={dnd.dropIndicator}
+              onAddSection={onAddSection}
+              onBrowseTemplates={() => setTemplateGalleryOpen(true)}
+              onPreviewFormSubmit={() => pushToast("info", "Form submission is disabled in preview.")}
+              onSaveToLibrary={onSaveToLibrary}
+              pushToast={pushToast}
+            />
+
+            {!isNarrow ? (
+              <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"} data-tour="inspector">
+                {/* Resize handle at the left edge of the right panel */}
+                <div
+                  className={styles.resizeHandleLeft}
+                  onMouseDown={startResizeRight}
+                  aria-hidden="true"
+                />
+                {themeOpen ? (
+                  <DesignTokensPanel onClose={() => setThemeOpen(false)} />
+                ) : (
+                  <>
+                    <div className={styles.panelTitle}>Inspector</div>
+                    <div className={styles.panelBody}>
+                      <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
+                    </div>
+                  </>
+                )}
+              </aside>
+            ) : null}
+          </main>
+
+          {isNarrow && mobilePanel === "palette" ? (
+            <Drawer title="Blocks & Layers" side="left" onClose={() => setMobilePanel(null)}>
               <div className={styles.leftPanelTabBar}>
                 <button
                   type="button"
@@ -277,152 +394,68 @@ export function PageBuilder() {
                   type="button"
                   className={leftTab === "library" ? styles.tabButtonActive : styles.tabButton}
                   onClick={() => setLeftTab("library")}
-                  data-testid="library-tab-btn"
                 >
                   Library
                 </button>
               </div>
-              <div className={styles.panelBody}>
-                {leftTab === "blocks" ? (
-                  <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
-                ) : leftTab === "layers" ? (
-                  <LayerTree canvasBodyRef={canvasBodyRef} />
-                ) : (
-                  <ComponentLibrary
-                    key={libraryVersion}
-                    disabled={!dndEnabled}
-                    onChanged={() => setLibraryVersion((v) => v + 1)}
-                  />
-                )}
-              </div>
-              {/* Resize handle at the right edge of the left panel */}
-              <div
-                className={styles.resizeHandleRight}
-                onMouseDown={startResizeLeft}
-                aria-hidden="true"
-              />
-            </aside>
+              {leftTab === "blocks" ? (
+                <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
+              ) : leftTab === "layers" ? (
+                <LayerTree canvasBodyRef={canvasBodyRef} />
+              ) : (
+                <ComponentLibrary
+                  key={libraryVersion}
+                  disabled={!dndEnabled}
+                  onChanged={() => setLibraryVersion((v) => v + 1)}
+                />
+              )}
+            </Drawer>
           ) : null}
 
-          <PageBuilderCanvas
-            canvasFrameRef={canvasFrameRef}
-            canvasBodyRef={canvasBodyRef}
-            focusCanvasFrame={focusCanvasFrame}
-            activeDrag={dnd.activeDrag}
-            dropIntent={dnd.dropIntent}
-            dropInvalid={dnd.dropInvalid}
-            dropIndicator={dnd.dropIndicator}
-            onAddSection={onAddSection}
-            onBrowseTemplates={() => setTemplateGalleryOpen(true)}
-            onPreviewFormSubmit={() => pushToast("info", "Form submission is disabled in preview.")}
-            onSaveToLibrary={onSaveToLibrary}
-            pushToast={pushToast}
+          {isNarrow && mobilePanel === "inspector" ? (
+            <Drawer title="Inspector" side="right" onClose={() => setMobilePanel(null)}>
+              <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
+            </Drawer>
+          ) : null}
+
+          <ToastHost toasts={toasts} onDismiss={dismissToast} />
+
+          <PageBuilderDialogs
+            dialog={dialog}
+            onCloseDialog={() => setDialog(null)}
+            onToast={pushToast}
+            resetOpen={resetOpen}
+            onCloseReset={() => setResetOpen(false)}
+            onConfirmReset={onConfirmReset}
+            renameOpen={renameOpen}
+            renameValue={renameValue}
+            onRenameValueChange={setRenameValue}
+            onCloseRename={() => setRenameOpen(false)}
+            onConfirmRename={onConfirmRename}
+            recoveryOpen={persistence.recoveryOpen}
+            recovery={persistence.recovery}
+            docId={persistence.docId}
+            onCloseRecovery={() => persistence.setRecoveryOpen(false)}
+            onOpenReset={() => setResetOpen(true)}
+            onOverwriteSavedAndEnableAutosave={() => {
+              void persistence.overwriteSavedAndEnableAutosave();
+            }}
+            onLoadBackupForRecovery={() => {
+              void persistence.loadBackupSnapshotForRecovery();
+            }}
           />
 
-          {!isNarrow ? (
-            <aside className={styles.panel} aria-label={themeOpen ? "Design Tokens" : "Inspector"} data-tour="inspector">
-              {/* Resize handle at the left edge of the right panel */}
-              <div
-                className={styles.resizeHandleLeft}
-                onMouseDown={startResizeRight}
-                aria-hidden="true"
-              />
-              {themeOpen ? (
-                <DesignTokensPanel onClose={() => setThemeOpen(false)} />
-              ) : (
-                <>
-                  <div className={styles.panelTitle}>Inspector</div>
-                  <div className={styles.panelBody}>
-                    <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
-                  </div>
-                </>
-              )}
-            </aside>
-          ) : null}
-        </main>
-
-        {isNarrow && mobilePanel === "palette" ? (
-          <Drawer title="Blocks & Layers" side="left" onClose={() => setMobilePanel(null)}>
-            <div className={styles.leftPanelTabBar}>
-              <button
-                type="button"
-                className={leftTab === "blocks" ? styles.tabButtonActive : styles.tabButton}
-                onClick={() => setLeftTab("blocks")}
-              >
-                Blocks
-              </button>
-              <button
-                type="button"
-                className={leftTab === "layers" ? styles.tabButtonActive : styles.tabButton}
-                onClick={() => setLeftTab("layers")}
-              >
-                Layers
-              </button>
-              <button
-                type="button"
-                className={leftTab === "library" ? styles.tabButtonActive : styles.tabButton}
-                onClick={() => setLeftTab("library")}
-              >
-                Library
-              </button>
-            </div>
-            {leftTab === "blocks" ? (
-              <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
-            ) : leftTab === "layers" ? (
-              <LayerTree canvasBodyRef={canvasBodyRef} />
-            ) : (
-              <ComponentLibrary
-                key={libraryVersion}
-                disabled={!dndEnabled}
-                onChanged={() => setLibraryVersion((v) => v + 1)}
-              />
-            )}
-          </Drawer>
-        ) : null}
-
-        {isNarrow && mobilePanel === "inspector" ? (
-          <Drawer title="Inspector" side="right" onClose={() => setMobilePanel(null)}>
-            <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
-          </Drawer>
-        ) : null}
-
-        <ToastHost toasts={toasts} onDismiss={dismissToast} />
-
-        <PageBuilderDialogs
-          dialog={dialog}
-          onCloseDialog={() => setDialog(null)}
-          onToast={pushToast}
-          resetOpen={resetOpen}
-          onCloseReset={() => setResetOpen(false)}
-          onConfirmReset={onConfirmReset}
-          renameOpen={renameOpen}
-          renameValue={renameValue}
-          onRenameValueChange={setRenameValue}
-          onCloseRename={() => setRenameOpen(false)}
-          onConfirmRename={onConfirmRename}
-          recoveryOpen={persistence.recoveryOpen}
-          recovery={persistence.recovery}
-          docId={persistence.docId}
-          onCloseRecovery={() => persistence.setRecoveryOpen(false)}
-          onOpenReset={() => setResetOpen(true)}
-          onOverwriteSavedAndEnableAutosave={() => {
-            void persistence.overwriteSavedAndEnableAutosave();
-          }}
-          onLoadBackupForRecovery={() => {
-            void persistence.loadBackupSnapshotForRecovery();
-          }}
-        />
-
-        <DragOverlay dropAnimation={prefersReducedMotion ? null : undefined}>
-          {dnd.activeDrag?.kind === "palette" ? (
-            <PaletteDragPreview nodeType={dnd.activeDrag.nodeType} />
-          ) : dnd.activeDrag?.kind === "node" || dnd.activeDrag?.kind === "component" ? (
-            <div className={styles.dragOverlay} data-testid="node-drag-overlay">
-              {dnd.dragOverlayLabel}
-            </div>
-          ) : null}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay dropAnimation={prefersReducedMotion ? null : undefined}>
+            {dnd.activeDrag?.kind === "palette" ? (
+              <PaletteDragPreview nodeType={dnd.activeDrag.nodeType} />
+            ) : dnd.activeDrag?.kind === "node" || dnd.activeDrag?.kind === "component" ? (
+              <div className={styles.dragOverlay} data-testid="node-drag-overlay">
+                {dnd.dragOverlayLabel}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {templateGalleryOpen ? (
         <TemplateGallery
@@ -434,16 +467,19 @@ export function PageBuilder() {
             const idFactory = editorStore.getState().idFactory;
             const doc = tmpl.create(idFactory);
             const res = persistence.createDocumentFromTemplate(doc, title);
-            if (res.ok) setTemplateGalleryOpen(false);
+            if (res.ok) {
+              setTemplateGalleryOpen(false);
+              setView("editor");
+            }
           }}
         />
       ) : null}
 
-      {tourActive ? (
+      {tourActive && view === "editor" ? (
         <GuidedTour onDone={() => setTourActive(false)} />
       ) : null}
 
-      {commandPaletteOpen ? (
+      {commandPaletteOpen && view === "editor" ? (
         <CommandPalette
           onClose={() => {
             setCommandPaletteOpen(false);
@@ -457,7 +493,7 @@ export function PageBuilder() {
         />
       ) : null}
 
-      {saveToLibraryNodeId ? (
+      {saveToLibraryNodeId && view === "editor" ? (
         <SaveToLibraryModal
           defaultName={(() => {
             const state = editorStore.getState();
