@@ -20,7 +20,7 @@ function makeSubtree() {
         type: "section" as const,
         parentId: null,
         children: [],
-        props: { variant: "default" },
+        props: { variant: "default" as const, fullWidth: false },
       },
     },
   };
@@ -190,7 +190,7 @@ describe("componentLibrary", () => {
           type: "section" as const,
           parentId: null,
           children: ["col-1"],
-          props: { variant: "hero" },
+          props: { variant: "hero" as const, fullWidth: false },
         },
         "col-1": {
           id: "col-1",

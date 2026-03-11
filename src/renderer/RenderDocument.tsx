@@ -143,7 +143,11 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
 
   const onMouseLeave =
     props.mode === "editor" && props.onHover
-      ? () => props.onHover?.(node.parentId)
+      ? (e: MouseEvent) => {
+          // Don't clear hover when mouse moves to the HoverActions toolbar (portaled to body)
+          if ((e.relatedTarget as Element | null)?.closest?.("[data-hover-actions]")) return;
+          props.onHover?.(node.parentId);
+        }
       : undefined;
 
   const onContextMenu =
@@ -296,7 +300,13 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     : undefined;
 
   const onMouseEnter = props.onHover ? () => props.onHover?.(node.id) : undefined;
-  const onMouseLeave = props.onHover ? () => props.onHover?.(node.parentId) : undefined;
+  const onMouseLeave = props.onHover
+    ? (e: MouseEvent) => {
+        // Don't clear hover when mouse moves to the HoverActions toolbar (portaled to body)
+        if ((e.relatedTarget as Element | null)?.closest?.("[data-hover-actions]")) return;
+        props.onHover?.(node.parentId);
+      }
+    : undefined;
 
   const onContextMenu = props.onNodeContextMenu
     ? (e: MouseEvent) => {

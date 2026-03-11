@@ -9,10 +9,12 @@ export function HoverActions({
   hoveredId,
   onDuplicate,
   onDelete,
+  onActionsMouseLeave,
 }: {
   hoveredId: NodeId;
   onDuplicate: (id: NodeId) => void;
   onDelete: (id: NodeId) => void;
+  onActionsMouseLeave?: () => void;
 }) {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
@@ -36,8 +38,10 @@ export function HoverActions({
       style={{ top, right }}
       role="toolbar"
       aria-label="Block quick actions"
+      data-hover-actions
       // Prevent mousedown from firing blur/hover-out on the canvas node before click
       onMouseDown={(e) => e.preventDefault()}
+      onMouseLeave={onActionsMouseLeave}
     >
       <button
         type="button"

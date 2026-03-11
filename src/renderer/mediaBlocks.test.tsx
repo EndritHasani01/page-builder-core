@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import { createDefaultDocument, createDeterministicIdFactory, createNode } from "@/editor-core";
+import type { Node } from "@/editor-core";
 
 import { RenderDocument } from "./RenderDocument";
 
@@ -9,13 +10,13 @@ import { RenderDocument } from "./RenderDocument";
 
 function buildDocWithNode(type: "video" | "embed" | "icon", props: Record<string, unknown>) {
   const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-  const idFactory = createDeterministicIdFactory(`${type}-render-test`);
+  const idFactory = createDeterministicIdFactory();
 
   const node = createNode(type as never, {
     idFactory,
     parentId: "column_1",
     props: props as never,
-  });
+  }) as unknown as Node;
 
   doc.nodes[node.id] = node;
   doc.nodes["column_1"] = { ...doc.nodes["column_1"]!, children: [node.id] };
@@ -207,7 +208,7 @@ describe("icon block — RenderDocument", () => {
 describe("image block enhancements — RenderDocument", () => {
   function buildImageDoc(props: Record<string, unknown>) {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("image-enhance-test");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("image", {
       idFactory,
       parentId: "column_1",

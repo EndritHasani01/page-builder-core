@@ -144,7 +144,7 @@ export function PageBuilder() {
 
   const { insertFromPalette } = usePaletteInsertion({ pushToast });
 
-  const isNarrow = useMediaQuery("(max-width: 1024px)");
+  const isNarrow = useMediaQuery("(max-width: 1280px)");
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   const canvasFrameRef = useRef<HTMLDivElement | null>(null);
@@ -413,8 +413,12 @@ export function PageBuilder() {
           ) : null}
 
           {isNarrow && mobilePanel === "inspector" ? (
-            <Drawer title="Inspector" side="right" onClose={() => setMobilePanel(null)}>
-              <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
+            <Drawer title={themeOpen ? "Design Tokens" : "Inspector"} side="right" onClose={() => setMobilePanel(null)}>
+              {themeOpen ? (
+                <DesignTokensPanel onClose={() => setThemeOpen(false)} />
+              ) : (
+                <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
+              )}
             </Drawer>
           ) : null}
 

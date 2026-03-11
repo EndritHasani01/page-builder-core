@@ -30,6 +30,16 @@ const NODE_TYPE_ABBR: Record<NodeType, string> = {
   button: "Bt",
   spacer: "Sp",
   divider: "Dv",
+  video: "Vi",
+  embed: "Em",
+  icon: "Ic",
+  form: "Fm",
+  textInput: "Ti",
+  textarea: "Ta",
+  selectInput: "Se",
+  checkbox: "Cb",
+  radioGroup: "Rg",
+  submitButton: "Sb",
 };
 
 function isContainerNode(node: Node): boolean {

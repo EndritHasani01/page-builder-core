@@ -1,11 +1,6 @@
-import type { IdFactory, Document, Node } from "@/editor-core";
+import type { IdFactory, Document } from "@/editor-core";
 import { LATEST_SCHEMA_VERSION, createDefaultTheme, createNode } from "@/editor-core";
-
-function collect(...ns: Node[]): Record<string, Node> {
-  const out: Record<string, Node> = {};
-  for (const n of ns) out[n.id] = n;
-  return out;
-}
+import { collect } from "./templateUtils";
 
 export function createLandingPageTemplate(idFactory: IdFactory): Document {
   const now = new Date().toISOString();
@@ -21,7 +16,7 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
     idFactory,
     parentId: heroColContent.id,
     props: { content: [{ text: "Build Something Great" }], as: "h1" },
-    style: { base: { fontSize: "var(--text-base)", fontWeight: 700, color: "var(--color-text)", marginBottom: "var(--space-3)" } },
+    style: { base: { fontSize: "2.5rem", fontWeight: 700, color: "var(--color-text)", marginBottom: "var(--space-3)" } },
   });
   const heroSubheading = createNode("text", {
     idFactory,
@@ -58,7 +53,7 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
   const featuresSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "default", fullWidth: false } });
   const featuresCols = createNode("columns", { idFactory, parentId: featuresSection.id, props: { columns: 3, gap: "var(--space-6)" } });
 
-  function makeFeatureCol(heading: string, body: string): { col: ReturnType<typeof createNode<"column">>; nodes: Node[] } {
+  function makeFeatureCol(heading: string, body: string): { col: ReturnType<typeof createNode<"column">>; nodes: ReturnType<typeof createNode>[] } {
     const col = createNode("column", { idFactory, parentId: featuresCols.id });
     const h = createNode("text", {
       idFactory,
@@ -84,7 +79,7 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
 
   // --- Testimonial section ---
   const testimonialSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "default", fullWidth: false } });
-  const testimonialCols = createNode("columns", { idFactory, parentId: testimonialSection.id, props: { columns: 2, gap: "var(--space-8)" } });
+  const testimonialCols = createNode("columns", { idFactory, parentId: testimonialSection.id, props: { columns: 1, gap: "var(--space-8)" } });
 
   const testimonialColQuote = createNode("column", { idFactory, parentId: testimonialCols.id });
   const testimonialQuote = createNode("text", {
@@ -100,13 +95,12 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
   });
   testimonialColQuote.children = [testimonialQuote.id, testimonialAuthor.id];
 
-  const testimonialColSpacer = createNode("column", { idFactory, parentId: testimonialCols.id });
-  testimonialCols.children = [testimonialColQuote.id, testimonialColSpacer.id];
+  testimonialCols.children = [testimonialColQuote.id];
   testimonialSection.children = [testimonialCols.id];
 
   // --- CTA section ---
   const ctaSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "hero", fullWidth: true } });
-  const ctaCols = createNode("columns", { idFactory, parentId: ctaSection.id, props: { columns: 2, gap: "var(--space-4)" } });
+  const ctaCols = createNode("columns", { idFactory, parentId: ctaSection.id, props: { columns: 1, gap: "var(--space-4)" } });
 
   const ctaColContent = createNode("column", { idFactory, parentId: ctaCols.id });
   const ctaHeading = createNode("text", {
@@ -122,8 +116,7 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
   });
   ctaColContent.children = [ctaHeading.id, ctaButton.id];
 
-  const ctaColSpacer = createNode("column", { idFactory, parentId: ctaCols.id });
-  ctaCols.children = [ctaColContent.id, ctaColSpacer.id];
+  ctaCols.children = [ctaColContent.id];
   ctaSection.children = [ctaCols.id];
 
   page.children = [heroSection.id, featuresSection.id, testimonialSection.id, ctaSection.id];
@@ -138,8 +131,8 @@ export function createLandingPageTemplate(idFactory: IdFactory): Document {
       heroColImage, heroImage,
       featuresSection, featuresCols,
       ...f1.nodes, ...f2.nodes, ...f3.nodes,
-      testimonialSection, testimonialCols, testimonialColQuote, testimonialQuote, testimonialAuthor, testimonialColSpacer,
-      ctaSection, ctaCols, ctaColContent, ctaHeading, ctaButton, ctaColSpacer,
+      testimonialSection, testimonialCols, testimonialColQuote, testimonialQuote, testimonialAuthor,
+      ctaSection, ctaCols, ctaColContent, ctaHeading, ctaButton,
     ),
   };
 }

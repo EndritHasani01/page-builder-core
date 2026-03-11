@@ -145,7 +145,10 @@ export function PageBuilderCanvas(props: {
         tabIndex={0}
         aria-label="Canvas editor"
         aria-describedby={selectionDescId}
-        onMouseLeave={() => dispatch({ type: "SET_HOVERED", nodeId: null })}
+        onMouseLeave={(e: MouseEvent) => {
+          if ((e.relatedTarget as Element | null)?.closest?.("[data-hover-actions]")) return;
+          dispatch({ type: "SET_HOVERED", nodeId: null });
+        }}
       >
         <div className={styles.canvasTitle}>Canvas ({mode})</div>
         <div id={selectionDescId} className={styles.selectionBreadcrumb} aria-live="polite">
@@ -212,6 +215,7 @@ export function PageBuilderCanvas(props: {
             if (id === doc.rootId) return;
             dispatch({ type: "DELETE_NODE", nodeId: id }, { historyLabel: "Delete" });
           }}
+          onActionsMouseLeave={() => dispatch({ type: "SET_HOVERED", nodeId: null })}
         />
       ) : null}
 

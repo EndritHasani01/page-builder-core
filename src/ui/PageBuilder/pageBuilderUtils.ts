@@ -142,6 +142,8 @@ export function getNodeLabel(doc: Document, node: Node): string {
       return "Spacer";
     case "divider":
       return "Divider";
+    default:
+      return blockRegistry[node.type].label;
   }
 }
 
@@ -188,6 +190,6 @@ export function downloadText(filename: string, content: string, mime: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 

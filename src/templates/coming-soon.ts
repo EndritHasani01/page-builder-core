@@ -1,11 +1,6 @@
-import type { IdFactory, Document, Node } from "@/editor-core";
+import type { IdFactory, Document } from "@/editor-core";
 import { LATEST_SCHEMA_VERSION, createDefaultTheme, createNode } from "@/editor-core";
-
-function collect(...ns: Node[]): Record<string, Node> {
-  const out: Record<string, Node> = {};
-  for (const n of ns) out[n.id] = n;
-  return out;
-}
+import { collect } from "./templateUtils";
 
 export function createComingSoonTemplate(idFactory: IdFactory): Document {
   const now = new Date().toISOString();
@@ -14,7 +9,7 @@ export function createComingSoonTemplate(idFactory: IdFactory): Document {
 
   // --- Centered hero section ---
   const heroSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "hero", fullWidth: true } });
-  const heroCols = createNode("columns", { idFactory, parentId: heroSection.id, props: { columns: 2, gap: "var(--space-4)" } });
+  const heroCols = createNode("columns", { idFactory, parentId: heroSection.id, props: { columns: 1, gap: "var(--space-4)" } });
 
   const heroColMain = createNode("column", { idFactory, parentId: heroCols.id });
 
@@ -48,8 +43,7 @@ export function createComingSoonTemplate(idFactory: IdFactory): Document {
 
   heroColMain.children = [heroDividerTop.id, heroHeading.id, heroSubtext.id, heroButton.id, heroDividerBottom.id];
 
-  const heroColSpacer = createNode("column", { idFactory, parentId: heroCols.id });
-  heroCols.children = [heroColMain.id, heroColSpacer.id];
+  heroCols.children = [heroColMain.id];
   heroSection.children = [heroCols.id];
 
   page.children = [heroSection.id];
@@ -62,7 +56,6 @@ export function createComingSoonTemplate(idFactory: IdFactory): Document {
       page,
       heroSection, heroCols, heroColMain,
       heroDividerTop, heroHeading, heroSubtext, heroButton, heroDividerBottom,
-      heroColSpacer,
     ),
   };
 }

@@ -7,7 +7,7 @@ import { RenderDocument } from "./RenderDocument";
 
 function buildFormDoc() {
   const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-  const idFactory = createDeterministicIdFactory("form-test");
+  const idFactory = createDeterministicIdFactory();
 
   // Place a form inside the existing column_1
   const form = createNode("form", {
@@ -100,7 +100,7 @@ describe("form blocks — DOM structure", () => {
 
   test("unsafe action URL is stripped in export", () => {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("unsafe-form");
+    const idFactory = createDeterministicIdFactory();
 
     const form = createNode("form", {
       idFactory,
@@ -122,7 +122,7 @@ describe("form blocks — DOM structure", () => {
 describe("form blocks — other form elements", () => {
   test("textarea renders with correct rows and name in export mode", () => {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("textarea-test");
+    const idFactory = createDeterministicIdFactory();
 
     const form = createNode("form", { idFactory, parentId: "column_1", props: { action: "", method: "post" } });
     const ta = createNode("textarea", {
@@ -145,7 +145,7 @@ describe("form blocks — other form elements", () => {
 
   test("selectInput renders with options in export mode", () => {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("select-test");
+    const idFactory = createDeterministicIdFactory();
 
     const form = createNode("form", { idFactory, parentId: "column_1", props: { action: "", method: "post" } });
     const sel = createNode("selectInput", {
@@ -179,7 +179,7 @@ describe("form blocks — other form elements", () => {
 
   test("checkbox renders with label association in export mode", () => {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("checkbox-test");
+    const idFactory = createDeterministicIdFactory();
 
     const form = createNode("form", { idFactory, parentId: "column_1", props: { action: "", method: "post" } });
     const cb = createNode("checkbox", {
@@ -204,7 +204,7 @@ describe("form blocks — other form elements", () => {
 
   test("radioGroup renders fieldset with legend and radio buttons", () => {
     const doc = createDefaultDocument(new Date("2026-03-03T12:00:00.000Z"));
-    const idFactory = createDeterministicIdFactory("radio-test");
+    const idFactory = createDeterministicIdFactory();
 
     const form = createNode("form", { idFactory, parentId: "column_1", props: { action: "", method: "post" } });
     const rg = createNode("radioGroup", {

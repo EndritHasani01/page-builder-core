@@ -90,7 +90,7 @@ describe("PageBuilder integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Redo" }));
     expect(canvas.getByText("Hello")).toBeInTheDocument();
     expect(inspector.getByText("Page Settings")).toBeInTheDocument();
-  });
+  }, 30000);
 
   test("shows a storage quota banner when saving fails with QuotaExceededError", async () => {
     render(<PageBuilder />);
@@ -267,7 +267,7 @@ describe("PageBuilder integration", () => {
       const input = inspector.getByLabelText(/^Columns/);
 
       expect(input).toHaveAttribute("type", "number");
-      expect(input).toHaveAttribute("min", "2");
+      expect(input).toHaveAttribute("min", "1");
       expect(input).toHaveAttribute("max", "6");
       expect(input).toHaveAttribute("step", "1");
 

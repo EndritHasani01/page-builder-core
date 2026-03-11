@@ -1,11 +1,6 @@
-import type { IdFactory, Document, Node } from "@/editor-core";
+import type { IdFactory, Document } from "@/editor-core";
 import { LATEST_SCHEMA_VERSION, createDefaultTheme, createNode } from "@/editor-core";
-
-function collect(...ns: Node[]): Record<string, Node> {
-  const out: Record<string, Node> = {};
-  for (const n of ns) out[n.id] = n;
-  return out;
-}
+import { collect } from "./templateUtils";
 
 export function createBlogPostTemplate(idFactory: IdFactory): Document {
   const now = new Date().toISOString();
@@ -14,7 +9,7 @@ export function createBlogPostTemplate(idFactory: IdFactory): Document {
 
   // --- Article section ---
   const articleSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "default", fullWidth: false } });
-  const articleCols = createNode("columns", { idFactory, parentId: articleSection.id, props: { columns: 2, gap: "var(--space-8)" } });
+  const articleCols = createNode("columns", { idFactory, parentId: articleSection.id, props: { columns: 1, gap: "var(--space-8)" } });
 
   const articleColMain = createNode("column", { idFactory, parentId: articleCols.id });
 
@@ -61,8 +56,7 @@ export function createBlogPostTemplate(idFactory: IdFactory): Document {
   });
   articleColMain.children = [articleTitle.id, articleSubtitle.id, articleDivider.id, articleBody1.id, articleBody2.id, articleSubheading.id, articleBody3.id];
 
-  const articleColSpacer = createNode("column", { idFactory, parentId: articleCols.id });
-  articleCols.children = [articleColMain.id, articleColSpacer.id];
+  articleCols.children = [articleColMain.id];
   articleSection.children = [articleCols.id];
 
   // --- Author section ---
@@ -105,7 +99,6 @@ export function createBlogPostTemplate(idFactory: IdFactory): Document {
       page,
       articleSection, articleCols, articleColMain,
       articleTitle, articleSubtitle, articleDivider, articleBody1, articleBody2, articleSubheading, articleBody3,
-      articleColSpacer,
       authorSection, authorCols, authorColImage, authorImage, authorColBio, authorName, authorBio,
     ),
   };

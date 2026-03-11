@@ -33,6 +33,9 @@ export function themeToCssVars(theme: Theme): CSSProperties {
     "--font-body": theme.typography.fontFamily,
     "--text-base": theme.typography.baseFontSize,
     "--space-unit": theme.spacing.unit,
+    "--bp-sm": `${theme.breakpoints.sm}px`,
+    "--bp-md": `${theme.breakpoints.md}px`,
+    "--bp-lg": `${theme.breakpoints.lg}px`,
   };
 
   for (let i = 1; i <= 10; i++) {
