@@ -608,7 +608,6 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
         }
 
         const createdIds: NodeId[] = [];
-        const ctx: ApplyCtxLike = { idFactory: state.idFactory, issues: [] };
 
         get().beginTransaction(`Duplicate ${ids.length} nodes`);
         for (const nodeId of ids) {
