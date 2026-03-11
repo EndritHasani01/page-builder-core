@@ -190,6 +190,6 @@ export function downloadText(filename: string, content: string, mime: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
