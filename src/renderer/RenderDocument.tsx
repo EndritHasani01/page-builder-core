@@ -1,4 +1,4 @@
-import type { CSSProperties, ClipboardEvent, KeyboardEvent, MouseEvent } from "react";
+import type { CSSProperties, ClipboardEvent, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { Fragment, memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
@@ -18,6 +18,13 @@ import { mergeCss, resolveResponsiveStyle, stylePropsToCss, themeToCssVars } fro
 
 export type RenderMode = "editor" | "preview" | "export";
 
+/** The intent used to render an in-flow drop slot at a specific position. */
+export type DropSlotIntent = {
+  parentId: NodeId;
+  index: number;
+  axis: "x" | "y";
+};
+
 export type RenderDocumentProps = {
   doc: Document;
   mode: RenderMode;
@@ -32,6 +39,8 @@ export type RenderDocumentProps = {
   draggingId?: NodeId | null;
   dropTargetId?: NodeId | null;
   dropInvalidId?: NodeId | null;
+  /** When set, renders an in-flow ghost drop slot inside the target container at the given index. */
+  dropSlotIntent?: DropSlotIntent | null;
 
   inlineTextEditingId?: NodeId | null;
   onStartInlineTextEdit?: (nodeId: NodeId) => void;
@@ -309,9 +318,30 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     </>
   );
 
-  const children = node.children.map((childId) => (
+  const rawChildren = node.children.map((childId) => (
     <NodeRendererWithDnd key={childId} nodeId={childId} {...rest} />
   ));
+
+  // Inject an in-flow ghost drop slot when this node is the drop target container.
+  const slot = props.dropSlotIntent;
+  let children: ReactNode;
+  if (slot && slot.parentId === nodeId) {
+    const withSlot = [...rawChildren];
+    const clampedIdx = Math.max(0, Math.min(slot.index, withSlot.length));
+    withSlot.splice(
+      clampedIdx,
+      0,
+      <div
+        key="__drop-slot__"
+        className={slot.axis === "x" ? styles.dropSlotX : styles.dropSlotY}
+        data-testid="drop-slot"
+        aria-hidden="true"
+      />,
+    );
+    children = withSlot;
+  } else {
+    children = rawChildren;
+  }
 
   return renderNode({
     node,
@@ -342,7 +372,7 @@ function renderNode(args: {
   mode: RenderMode;
   breakpoint: Breakpoint;
   disableNavigation?: boolean;
-  chrome: React.ReactNode;
+  chrome: ReactNode;
   chromeClassName?: string;
   dataAttrs: Record<string, string> | Record<string, never>;
   nodeStyle: CSSProperties;
@@ -351,7 +381,7 @@ function renderNode(args: {
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
   onContextMenu?: (e: MouseEvent) => void;
-  children: React.ReactNode;
+  children: ReactNode;
   dndRef?: (el: HTMLElement | null) => void;
 
   inlineTextEditingId?: NodeId | null;
@@ -1315,9 +1345,9 @@ function renderNode(args: {
  * Renders a RichContent array as React nodes. Each segment is wrapped in
  * appropriate inline elements (strong, em, u, s, code, a) for its active marks.
  */
-function renderRichContent(content: RichContent, disableNavigation?: boolean): React.ReactNode {
+function renderRichContent(content: RichContent, disableNavigation?: boolean): ReactNode {
   return content.map((seg, i) => {
-    let inner: React.ReactNode = seg.text;
+    let inner: ReactNode = seg.text;
     if (seg.code) inner = <code>{inner}</code>;
     if (seg.link?.href && isProbablySafeUrl(seg.link.href)) {
       const href = seg.link.href;

@@ -10,6 +10,7 @@ import type { DropIndicatorGeometry, DropInvalidInfo } from "../hooks/usePageBui
 import { useBlockContextMenu } from "../hooks/useBlockContextMenu";
 import { buildSelectionBreadcrumb } from "../pageBuilderUtils";
 import { ContextMenu } from "./ContextMenu";
+import { DragTooltip } from "./DragTooltip";
 import { EmptyCanvas } from "./EmptyCanvas";
 import { HoverActions } from "./HoverActions";
 
@@ -26,6 +27,7 @@ export function PageBuilderCanvas(props: {
   onAddSection: () => void;
   onBrowseTemplates?: () => void;
   onPreviewFormSubmit?: () => void;
+  onSaveToLibrary?: (nodeId: NodeId) => void;
   pushToast: (kind: "info" | "error", message: string) => void;
 }) {
   const {
@@ -39,6 +41,7 @@ export function PageBuilderCanvas(props: {
     onAddSection,
     onBrowseTemplates,
     onPreviewFormSubmit,
+    onSaveToLibrary,
     pushToast,
   } = props;
   const doc = useEditorStore((s) => s.doc);
@@ -64,7 +67,7 @@ export function PageBuilderCanvas(props: {
     onCanvasContextMenu,
     buildBlockMenuItems,
     buildCanvasMenuItems,
-  } = useBlockContextMenu({ pushToast, onAddSection, onBrowseTemplates });
+  } = useBlockContextMenu({ pushToast, onAddSection, onBrowseTemplates, onSaveToLibrary });
 
   const onSelect = useCallback(
     (nodeId: NodeId) => {
@@ -168,6 +171,11 @@ export function PageBuilderCanvas(props: {
               draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}
               dropTargetId={dropIntent?.parentId ?? null}
               dropInvalidId={dropInvalid?.overId ?? null}
+              dropSlotIntent={
+                renderMode === "editor" && dropIndicator
+                  ? { parentId: dropIndicator.parentId, index: dropIndicator.index, axis: dropIndicator.axis }
+                  : null
+              }
               inlineTextEditingId={renderMode === "editor" ? inlineTextEditingId : null}
               onStartInlineTextEdit={renderMode === "editor" ? onStartInlineTextEdit : undefined}
               onCommitInlineTextEdit={renderMode === "editor" ? onCommitInlineTextEdit : undefined}
@@ -182,21 +190,6 @@ export function PageBuilderCanvas(props: {
               }
             />
           )}
-          {dropIndicator ? (
-            <div
-              className={dropIndicator.kind === "placeholder" ? styles.dropPlaceholder : styles.dropLine}
-              style={{
-                left: dropIndicator.left,
-                top: dropIndicator.top,
-                width: dropIndicator.width,
-                height: dropIndicator.height,
-              }}
-              data-drop-indicator="true"
-              data-drop-parent={dropIndicator.parentId}
-              data-drop-index={String(dropIndicator.index)}
-              data-drop-axis={dropIndicator.axis}
-            />
-          ) : null}
         </div>
       </div>
 
@@ -227,6 +220,9 @@ export function PageBuilderCanvas(props: {
           onClose={closeMenu}
         />
       ) : null}
+
+      {/* Cursor-following tooltip for invalid drag targets */}
+      {activeDrag ? <DragTooltip reason={dropInvalid?.reason ?? null} /> : null}
     </section>
   );
 }

@@ -42,3 +42,14 @@ export function parseTreeRowDropId(id: unknown): NodeId | null {
   return rest ? (rest as NodeId) : null;
 }
 
+export function componentDragId(componentId: string): DndId {
+  return `comp:${componentId}`;
+}
+
+export function parseComponentDragId(id: unknown): string | null {
+  if (typeof id !== "string") return null;
+  if (!id.startsWith("comp:")) return null;
+  const rest = id.slice("comp:".length);
+  return rest || null;
+}
+

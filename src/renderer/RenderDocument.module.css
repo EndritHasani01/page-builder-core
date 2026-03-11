@@ -1,5 +1,12 @@
 .node {
   position: relative;
+  transition: transform 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node {
+    transition: none;
+  }
 }
 
 .nodeSelected {
@@ -77,4 +84,39 @@
   border-radius: 10px;
   color: #6b7280;
   background: #ffffff;
+}
+
+/* ── In-flow drop slot ───────────────────────────────────────────────────── */
+
+.dropSlotY {
+  border: 2px dashed var(--color-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  min-height: 60px;
+  pointer-events: none;
+  animation: dropSlotPulse 1s ease-in-out infinite;
+}
+
+.dropSlotX {
+  border: 2px dashed var(--color-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  min-width: 60px;
+  width: 60px;
+  flex-shrink: 0;
+  pointer-events: none;
+  animation: dropSlotPulse 1s ease-in-out infinite;
+}
+
+@keyframes dropSlotPulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 0.9; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropSlotY,
+  .dropSlotX {
+    animation: none;
+    opacity: 0.7;
+  }
 }

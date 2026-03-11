@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 
 import type { NodeType } from "@/editor-core";
+import { blockRegistry } from "@/editor-core";
 import { themeToCssVars } from "@/renderer";
 import { editorStore, useEditorStore } from "@/store";
 import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
 import { Drawer } from "./components/Overlays";
+import { ComponentLibrary } from "./components/ComponentLibrary";
 import { DesignTokensPanel } from "./components/DesignTokensPanel";
 import { GuidedTour, shouldShowTour } from "./components/GuidedTour";
 import { LayerTree } from "./components/LayerTree";
@@ -16,9 +18,13 @@ import { PageBuilderCanvas } from "./components/PageBuilderCanvas";
 import { PageBuilderDialogs } from "./components/PageBuilderDialogs";
 import { PageBuilderInspector } from "./components/PageBuilderInspector";
 import { PageBuilderToolbar } from "./components/PageBuilderToolbar";
+import { PaletteDragPreview } from "./components/PaletteDragPreview";
 import { PaletteList } from "./components/PaletteList";
+import { SaveToLibraryModal } from "./components/SaveToLibraryModal";
 import { TemplateGallery } from "./components/TemplateGallery";
 import { ToastHost } from "./components/ToastHost";
+import { cloneSubtree } from "@/editor-core/subtree";
+import { saveComponent } from "@/persistence/componentLibrary";
 import { TEMPLATES } from "@/templates";
 import { usePageBuilderDnd } from "./hooks/usePageBuilderDnd";
 import {
@@ -28,6 +34,7 @@ import {
 } from "./hooks/usePageBuilderKeyboardShortcuts";
 import { usePageBuilderPersistence } from "./hooks/usePageBuilderPersistence";
 import { usePaletteInsertion } from "./hooks/usePaletteInsertion";
+import { getNodeLabel } from "./pageBuilderUtils";
 import { useToastHost } from "./hooks/useToastHost";
 
 import styles from "./PageBuilder.module.css";
@@ -55,7 +62,9 @@ export function PageBuilder() {
 
   const persistence = usePageBuilderPersistence({ pushToast });
 
-  const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
+  const [leftTab, setLeftTab] = useState<"blocks" | "layers" | "library">("blocks");
+  const [saveToLibraryNodeId, setSaveToLibraryNodeId] = useState<string | null>(null);
+  const [libraryVersion, setLibraryVersion] = useState(0);
   const [themeOpen, setThemeOpen] = useState(false);
   const [dialog, setDialog] = useState<PageBuilderDialog>(null);
   const [mobilePanel, setMobilePanel] = useState<PageBuilderMobilePanel>(null);
@@ -164,6 +173,10 @@ export function PageBuilder() {
     [insertFromPalette, isNarrow],
   );
 
+  const onSaveToLibrary = useCallback((nodeId: string) => {
+    setSaveToLibraryNodeId(nodeId);
+  }, []);
+
   const onAddSection = useCallback(() => {
     insertFromPaletteAndMaybeClose("section");
   }, [insertFromPaletteAndMaybeClose]);
@@ -255,12 +268,26 @@ export function PageBuilder() {
                 >
                   Layers
                 </button>
+                <button
+                  type="button"
+                  className={leftTab === "library" ? styles.tabButtonActive : styles.tabButton}
+                  onClick={() => setLeftTab("library")}
+                  data-testid="library-tab-btn"
+                >
+                  Library
+                </button>
               </div>
               <div className={styles.panelBody}>
                 {leftTab === "blocks" ? (
                   <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
-                ) : (
+                ) : leftTab === "layers" ? (
                   <LayerTree canvasBodyRef={canvasBodyRef} />
+                ) : (
+                  <ComponentLibrary
+                    key={libraryVersion}
+                    disabled={!dndEnabled}
+                    onChanged={() => setLibraryVersion((v) => v + 1)}
+                  />
                 )}
               </div>
               {/* Resize handle at the right edge of the left panel */}
@@ -283,6 +310,7 @@ export function PageBuilder() {
             onAddSection={onAddSection}
             onBrowseTemplates={() => setTemplateGalleryOpen(true)}
             onPreviewFormSubmit={() => pushToast("info", "Form submission is disabled in preview.")}
+            onSaveToLibrary={onSaveToLibrary}
             pushToast={pushToast}
           />
 
@@ -300,7 +328,7 @@ export function PageBuilder() {
                 <>
                   <div className={styles.panelTitle}>Inspector</div>
                   <div className={styles.panelBody}>
-                    <PageBuilderInspector />
+                    <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
                   </div>
                 </>
               )}
@@ -325,18 +353,31 @@ export function PageBuilder() {
               >
                 Layers
               </button>
+              <button
+                type="button"
+                className={leftTab === "library" ? styles.tabButtonActive : styles.tabButton}
+                onClick={() => setLeftTab("library")}
+              >
+                Library
+              </button>
             </div>
             {leftTab === "blocks" ? (
               <PaletteList disabled={!dndEnabled} onInsert={insertFromPaletteAndMaybeClose} />
-            ) : (
+            ) : leftTab === "layers" ? (
               <LayerTree canvasBodyRef={canvasBodyRef} />
+            ) : (
+              <ComponentLibrary
+                key={libraryVersion}
+                disabled={!dndEnabled}
+                onChanged={() => setLibraryVersion((v) => v + 1)}
+              />
             )}
           </Drawer>
         ) : null}
 
         {isNarrow && mobilePanel === "inspector" ? (
           <Drawer title="Inspector" side="right" onClose={() => setMobilePanel(null)}>
-            <PageBuilderInspector />
+            <PageBuilderInspector onSaveToLibrary={onSaveToLibrary} />
           </Drawer>
         ) : null}
 
@@ -368,7 +409,13 @@ export function PageBuilder() {
         />
 
         <DragOverlay dropAnimation={prefersReducedMotion ? null : undefined}>
-          {dnd.activeDrag ? <div className={styles.dragOverlay}>{dnd.dragOverlayLabel}</div> : null}
+          {dnd.activeDrag?.kind === "palette" ? (
+            <PaletteDragPreview nodeType={dnd.activeDrag.nodeType} />
+          ) : dnd.activeDrag?.kind === "node" || dnd.activeDrag?.kind === "component" ? (
+            <div className={styles.dragOverlay} data-testid="node-drag-overlay">
+              {dnd.dragOverlayLabel}
+            </div>
+          ) : null}
         </DragOverlay>
       </DndContext>
 
@@ -389,6 +436,35 @@ export function PageBuilder() {
 
       {tourActive ? (
         <GuidedTour onDone={() => setTourActive(false)} />
+      ) : null}
+
+      {saveToLibraryNodeId ? (
+        <SaveToLibraryModal
+          defaultName={(() => {
+            const state = editorStore.getState();
+            const node = state.doc.nodes[saveToLibraryNodeId];
+            if (!node) return "Component";
+            return getNodeLabel(state.doc, node) || blockRegistry[node.type]?.label || node.type;
+          })()}
+          onClose={() => setSaveToLibraryNodeId(null)}
+          onConfirm={(name, category) => {
+            const state = editorStore.getState();
+            const node = state.doc.nodes[saveToLibraryNodeId];
+            if (!node) {
+              setSaveToLibraryNodeId(null);
+              return;
+            }
+            const subtree = cloneSubtree(state.doc, saveToLibraryNodeId);
+            const res = saveComponent({ name, category, subtree });
+            if (res.ok) {
+              pushToast("success", `"${name}" saved to library.`);
+              setLibraryVersion((v) => v + 1);
+            } else if (res.quota) {
+              pushToast("error", "Storage quota exceeded. Delete some components to free space.");
+            }
+            setSaveToLibraryNodeId(null);
+          }}
+        />
       ) : null}
     </div>
   );

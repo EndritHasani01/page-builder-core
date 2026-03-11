@@ -121,7 +121,7 @@ function hasContentOverrides(node: { type: NodeType; props: Record<string, unkno
 
 // ─── Public component ─────────────────────────────────────────────────────────
 
-export function PageBuilderInspector() {
+export function PageBuilderInspector(props: { onSaveToLibrary?: (nodeId: NodeId) => void }) {
   const doc = useEditorStore((s) => s.doc);
   const issues = useEditorStore((s) => s.issues);
   const selectedId = useEditorStore((s) => s.selectedId);
@@ -143,6 +143,7 @@ export function PageBuilderInspector() {
       mode={mode}
       breakpoint={breakpoint}
       dispatch={dispatch}
+      onSaveToLibrary={props.onSaveToLibrary}
     />
   );
 }
@@ -156,6 +157,7 @@ function InspectorPanel(props: {
   mode: Mode;
   breakpoint: Breakpoint;
   dispatch: (action: EditorAction, opts?: DispatchOptions) => void;
+  onSaveToLibrary?: (nodeId: NodeId) => void;
 }) {
   const node = props.doc.nodes[props.selectedId];
   if (!node) return null;
@@ -248,6 +250,21 @@ function InspectorPanel(props: {
       {props.mode === "preview" ? (
         <div className={styles.inlineNotice} role="note">
           Preview mode is read-only. Switch to Edit to make changes.
+        </div>
+      ) : null}
+
+      {/* Save to Library */}
+      {props.onSaveToLibrary && node.type !== "page" ? (
+        <div className={styles.inlineRow}>
+          <button
+            type="button"
+            className={styles.resetButton}
+            disabled={props.mode === "preview"}
+            onClick={() => props.onSaveToLibrary!(node.id)}
+            data-testid="save-to-library-inspector-btn"
+          >
+            Save to Library
+          </button>
         </div>
       ) : null}
 

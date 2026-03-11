@@ -13,6 +13,7 @@ type Args = {
   pushToast: (kind: "info" | "error", message: string) => void;
   onAddSection: () => void;
   onBrowseTemplates?: () => void;
+  onSaveToLibrary?: (nodeId: NodeId) => void;
 };
 
 export function useBlockContextMenu(args: Args) {
@@ -175,8 +176,10 @@ export function useBlockContextMenu(args: Args) {
         {
           kind: "action",
           label: "Save to Library",
-          disabled: true,
-          action: () => {},
+          disabled: isRoot,
+          action: () => {
+            args.onSaveToLibrary?.(nodeId);
+          },
         },
         { kind: "separator" },
         {

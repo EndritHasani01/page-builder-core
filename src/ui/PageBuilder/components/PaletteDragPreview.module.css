@@ -1,0 +1,263 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  min-width: 120px;
+  max-width: 180px;
+  border-radius: 10px;
+  border: 1px solid var(--editor-border);
+  background: #1e1b4b;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  user-select: none;
+  cursor: grabbing;
+}
+
+.cardLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  margin-bottom: 2px;
+}
+
+/* ── Text block preview ──────────────────────────────────────────────────── */
+
+.textLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.textLine {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.textLineShort {
+  width: 65%;
+}
+
+/* ── Image block preview ─────────────────────────────────────────────────── */
+
+.imagePlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Button block preview ────────────────────────────────────────────────── */
+
+.buttonShape {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* ── Section preview ─────────────────────────────────────────────────────── */
+
+.sectionCard {
+  min-width: 160px;
+}
+
+.sectionStripes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sectionStripe {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.sectionStripeNarrow {
+  width: 55%;
+}
+
+/* ── Columns preview ─────────────────────────────────────────────────────── */
+
+.columnsRow {
+  display: flex;
+  gap: 4px;
+  height: 36px;
+}
+
+.columnStub {
+  flex: 1;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+
+/* ── Container preview ───────────────────────────────────────────────────── */
+
+.containerBox {
+  height: 36px;
+  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── Spacer preview ──────────────────────────────────────────────────────── */
+
+.spacerVisual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.35);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.35);
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* ── Divider preview ─────────────────────────────────────────────────────── */
+
+.dividerVisual {
+  height: 2px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.4);
+  margin: 6px 0;
+}
+
+/* ── Video preview ───────────────────────────────────────────────────────── */
+
+.videoPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 52px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.playIcon {
+  width: 24px;
+  height: 24px;
+  opacity: 0.7;
+}
+
+/* ── Embed preview ───────────────────────────────────────────────────────── */
+
+.embedPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 40px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  font-size: 10px;
+  opacity: 0.75;
+}
+
+/* ── Icon preview ────────────────────────────────────────────────────────── */
+
+.iconPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  font-size: 22px;
+  opacity: 0.75;
+}
+
+/* ── Form block previews ─────────────────────────────────────────────────── */
+
+.inputShape {
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.textareaShape {
+  height: 40px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checkboxShape {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.checkboxLabel {
+  height: 6px;
+  width: 60px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.radioRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.radioOption {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.radioDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.radioLine {
+  height: 5px;
+  width: 50px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.submitBtnShape {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.3);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.formCardInner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
