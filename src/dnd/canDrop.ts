@@ -1,5 +1,6 @@
 import type { Document, Node, NodeType } from "@/editor-core";
 import { blockRegistry, wouldCreateCycle } from "@/editor-core";
+import { loadComponents } from "@/persistence/componentLibrary";
 
 import type { DragPayload, DropTarget } from "./types";
 
@@ -32,6 +33,12 @@ function canHaveMoreChildren(parent: Node): boolean {
 
 function childTypeForSource(doc: Document, source: DragPayload): NodeType | null {
   if (source.kind === "palette") return source.nodeType;
+  if (source.kind === "component") {
+    const component = loadComponents().find((c) => c.id === source.componentId);
+    if (!component) return null;
+    const rootNode = component.subtree.nodes[component.subtree.rootId];
+    return rootNode?.type ?? null;
+  }
   const node = doc.nodes[source.nodeId];
   return node?.type ?? null;
 }
@@ -49,6 +56,16 @@ export function canDrop(doc: Document, source: DragPayload, target: DropTarget):
   }
 
   if (source.kind === "palette") {
+    if (!blockRegistry[targetParent.type].allowedChildren.includes(childType)) {
+      return { ok: false, reason: `Cannot drop "${childType}" into "${targetParent.type}".` };
+    }
+    if (!canHaveMoreChildren(targetParent)) {
+      return { ok: false, reason: "Target parent cannot accept more children." };
+    }
+    return { ok: true };
+  }
+
+  if (source.kind === "component") {
     if (!blockRegistry[targetParent.type].allowedChildren.includes(childType)) {
       return { ok: false, reason: `Cannot drop "${childType}" into "${targetParent.type}".` };
     }

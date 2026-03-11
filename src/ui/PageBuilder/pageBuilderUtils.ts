@@ -142,6 +142,8 @@ export function getNodeLabel(doc: Document, node: Node): string {
       return "Spacer";
     case "divider":
       return "Divider";
+    default:
+      return blockRegistry[node.type].label;
   }
 }
 

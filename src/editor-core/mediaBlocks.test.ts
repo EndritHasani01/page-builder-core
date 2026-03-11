@@ -191,14 +191,14 @@ describe("video block", () => {
   });
 
   test("validate passes for empty URL", () => {
-    const idFactory = createDeterministicIdFactory("video-test");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("video", { idFactory, parentId: "col1", props: { url: "", aspectRatio: "16:9", autoplay: false, loop: false } });
     const issues = blockRegistry.video.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(0);
   });
 
   test("validate warns for non-video URL", () => {
-    const idFactory = createDeterministicIdFactory("video-test2");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("video", { idFactory, parentId: "col1", props: { url: "https://example.com/notavideo", aspectRatio: "16:9", autoplay: false, loop: false } });
     const issues = blockRegistry.video.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(1);
@@ -207,14 +207,14 @@ describe("video block", () => {
   });
 
   test("validate passes for valid YouTube URL", () => {
-    const idFactory = createDeterministicIdFactory("video-test3");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("video", { idFactory, parentId: "col1", props: { url: "https://youtube.com/watch?v=dQw4w9WgXcQ", aspectRatio: "16:9", autoplay: false, loop: false } });
     const issues = blockRegistry.video.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(0);
   });
 
   test("validate passes for valid Vimeo URL", () => {
-    const idFactory = createDeterministicIdFactory("video-test4");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("video", { idFactory, parentId: "col1", props: { url: "https://vimeo.com/123456789", aspectRatio: "4:3", autoplay: false, loop: false } });
     const issues = blockRegistry.video.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(0);
@@ -233,14 +233,14 @@ describe("video block", () => {
 
 describe("embed block", () => {
   test("validate passes for empty URL", () => {
-    const idFactory = createDeterministicIdFactory("embed-test");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("embed", { idFactory, parentId: "col1", props: { url: "", width: "100%", height: "400px" } });
     const issues = blockRegistry.embed.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(0);
   });
 
   test("validate errors for disallowed domain", () => {
-    const idFactory = createDeterministicIdFactory("embed-test2");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("embed", { idFactory, parentId: "col1", props: { url: "https://evil.example.com/page", width: "100%", height: "400px" } });
     const issues = blockRegistry.embed.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(1);
@@ -249,7 +249,7 @@ describe("embed block", () => {
   });
 
   test("validate passes for allowed domain (codepen.io)", () => {
-    const idFactory = createDeterministicIdFactory("embed-test3");
+    const idFactory = createDeterministicIdFactory();
     const node = createNode("embed", { idFactory, parentId: "col1", props: { url: "https://codepen.io/user/pen/abc", width: "100%", height: "400px" } });
     const issues = blockRegistry.embed.validate!(node as never, { doc: {} as never });
     expect(issues).toHaveLength(0);
