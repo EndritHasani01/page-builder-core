@@ -7,6 +7,7 @@ import type { PersistenceStatus, WorkspaceDocMeta } from "@/persistence";
 import type { PageBuilderDialog, PageBuilderMobilePanel } from "../hooks/usePageBuilderKeyboardShortcuts";
 import type { RecoveryInfo } from "../hooks/usePageBuilderPersistence";
 import { formatShortTime } from "../pageBuilderUtils";
+import { getAction } from "../actions";
 
 import styles from "../PageBuilder.module.css";
 
@@ -171,8 +172,9 @@ export function PageBuilderToolbar(props: {
             onClick={undo}
             disabled={undoStackLen === 0 || Boolean(activeTxn)}
             aria-label="Undo"
+            title={`Undo (${getAction("undo")?.shortcut ?? "Ctrl+Z"})`}
           >
-            Undo
+            Undo{getAction("undo")?.shortcut ? <kbd className={styles.shortcutHint}>{getAction("undo")!.shortcut}</kbd> : null}
           </button>
           <button
             className={styles.button}
@@ -180,8 +182,9 @@ export function PageBuilderToolbar(props: {
             onClick={redo}
             disabled={redoStackLen === 0 || Boolean(activeTxn)}
             aria-label="Redo"
+            title={`Redo (${getAction("redo")?.shortcut ?? "Ctrl+Shift+Z"})`}
           >
-            Redo
+            Redo{getAction("redo")?.shortcut ? <kbd className={styles.shortcutHint}>{getAction("redo")!.shortcut}</kbd> : null}
           </button>
 
           <button
@@ -192,8 +195,9 @@ export function PageBuilderToolbar(props: {
               props.setDialog("shortcuts");
             }}
             aria-label="Keyboard shortcuts"
+            title="Keyboard shortcuts (?)"
           >
-            Shortcuts
+            Shortcuts<kbd className={styles.shortcutHint}>?</kbd>
           </button>
 
           {props.isNarrow ? (

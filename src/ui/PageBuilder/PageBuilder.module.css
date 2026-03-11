@@ -127,6 +127,20 @@
   cursor: default;
 }
 
+.shortcutHint {
+  display: inline-block;
+  margin-left: 5px;
+  font-size: 10px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  color: var(--editor-text-muted);
+  line-height: 1.4;
+  vertical-align: middle;
+}
+
 .buttonActive {
   composes: button;
   border-color: color-mix(in srgb, var(--editor-accent) 60%, var(--editor-border));

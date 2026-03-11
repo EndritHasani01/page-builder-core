@@ -9,6 +9,7 @@ import { themeToCssVars } from "@/renderer";
 import { editorStore, useEditorStore } from "@/store";
 import { useMediaQuery } from "@/ui/hooks/useMediaQuery";
 
+import { CommandPalette } from "./components/CommandPalette";
 import { Drawer } from "./components/Overlays";
 import { ComponentLibrary } from "./components/ComponentLibrary";
 import { DesignTokensPanel } from "./components/DesignTokensPanel";
@@ -72,6 +73,7 @@ export function PageBuilder() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [templateGalleryOpen, setTemplateGalleryOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [tourActive, setTourActive] = useState(() => shouldShowTour());
 
   // Panel resize state
@@ -156,13 +158,16 @@ export function PageBuilder() {
     mobilePanel,
     resetOpen,
     recoveryOpen: persistence.recoveryOpen,
+    commandPaletteOpen,
     activeDrag: dnd.activeDrag,
     setDialog,
     setMobilePanel,
     setResetOpen,
     setRecoveryOpen: persistence.setRecoveryOpen,
+    setCommandPaletteOpen,
     pushToast,
     focusCanvasFrame,
+    canvasFrameRef,
   });
 
   const insertFromPaletteAndMaybeClose = useCallback(
@@ -436,6 +441,20 @@ export function PageBuilder() {
 
       {tourActive ? (
         <GuidedTour onDone={() => setTourActive(false)} />
+      ) : null}
+
+      {commandPaletteOpen ? (
+        <CommandPalette
+          onClose={() => {
+            setCommandPaletteOpen(false);
+            focusCanvasFrame();
+          }}
+          actionContext={{
+            pushToast,
+            openDialog: setDialog,
+            focusCanvasFrame,
+          }}
+        />
       ) : null}
 
       {saveToLibraryNodeId ? (
