@@ -223,7 +223,7 @@
 
 .leftPanelTabBar {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 5px;
   padding: 6px;
   border-bottom: 1px solid var(--editor-border);
@@ -232,6 +232,8 @@
 .panelBody {
   padding: 10px;
   overflow: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 /* ─── Resize handles ──────────────────────────────────────────────────────── */
@@ -1177,18 +1179,25 @@
               box-shadow var(--editor-duration-fast) ease;
 }
 
+/* Base: no max-width constraint — styles apply at all viewport sizes */
+.canvasFrame[data-bp="base"] {
+  max-width: none;
+  margin: 0 auto;
+  border-style: dashed;
+}
+
 .canvasFrame[data-bp="sm"] {
-  max-width: 420px;
+  max-width: var(--bp-sm, 640px);
   margin: 0 auto;
 }
 
 .canvasFrame[data-bp="md"] {
-  max-width: 860px;
+  max-width: var(--bp-md, 768px);
   margin: 0 auto;
 }
 
 .canvasFrame[data-bp="lg"] {
-  max-width: 1200px;
+  max-width: var(--bp-lg, 1024px);
   margin: 0 auto;
 }
 
