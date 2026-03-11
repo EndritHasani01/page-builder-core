@@ -72,6 +72,7 @@ export function usePageBuilderKeyboardShortcuts(args: Args): void {
 
           e.preventDefault();
           const d = state.doc;
+          // SET_SELECTED also resets selectedIds to single selection.
           state.dispatch({ type: "SET_SELECTED", nodeId: d.rootId });
           state.dispatch({ type: "SET_HOVERED", nodeId: null });
           latest.focusCanvasFrame();
@@ -130,27 +131,29 @@ export function usePageBuilderKeyboardShortcuts(args: Args): void {
 
         case "DELETE_SELECTED": {
           e.preventDefault();
-          const d = state.doc;
-          const id = state.selectedId;
-          if (!id || id === d.rootId) {
-            latest.pushToast("error", "Cannot delete the root Page node.");
+          const res = state.deleteSelected();
+          if (!res.ok) {
+            latest.pushToast("error", res.error);
             return;
           }
-          state.dispatch({ type: "DELETE_NODE", nodeId: id }, { historyLabel: "Delete" });
           latest.focusCanvasFrame();
           return;
         }
 
         case "DUPLICATE_SELECTED": {
           e.preventDefault();
-          const d = state.doc;
-          const id = state.selectedId;
-          if (!id || id === d.rootId) {
-            latest.pushToast("error", "Cannot duplicate the root Page node.");
+          const res = state.duplicateSelected();
+          if (!res.ok) {
+            latest.pushToast("error", res.error);
             return;
           }
-          state.dispatch({ type: "DUPLICATE_NODE", nodeId: id }, { historyLabel: "Duplicate" });
           latest.focusCanvasFrame();
+          return;
+        }
+
+        case "SELECT_ALL_SIBLINGS": {
+          e.preventDefault();
+          state.dispatch({ type: "SELECT_SIBLINGS" });
           return;
         }
 

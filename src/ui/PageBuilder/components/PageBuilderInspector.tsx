@@ -14,7 +14,7 @@ import {
   isStyleKeyOverridden,
 } from "@/editor-core";
 import type { DispatchOptions, EditorAction, Mode } from "@/store";
-import { useEditorStore } from "@/store";
+import { editorStore, useEditorStore } from "@/store";
 
 import styles from "../PageBuilder.module.css";
 import { BoxModelEditor } from "./BoxModelEditor";
@@ -125,6 +125,7 @@ export function PageBuilderInspector(props: { onSaveToLibrary?: (nodeId: NodeId)
   const doc = useEditorStore((s) => s.doc);
   const issues = useEditorStore((s) => s.issues);
   const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const mode = useEditorStore((s) => s.mode);
   const breakpoint = useEditorStore((s) => s.breakpoint);
   const dispatch = useEditorStore((s) => s.dispatch);
@@ -134,15 +135,39 @@ export function PageBuilderInspector(props: { onSaveToLibrary?: (nodeId: NodeId)
     return <p className={styles.muted}>Select a node to edit.</p>;
   }
 
+  const isMultiSelect = selectedIds.length > 1;
+  const allSameType = isMultiSelect && selectedIds.every((id) => doc.nodes[id]?.type === node.type);
+
+  // When multi-selecting, wrap dispatch so UPDATE_STYLE/UPDATE_PROPS apply to all selected nodes.
+  const bulkDispatch = isMultiSelect
+    ? (action: EditorAction, opts?: DispatchOptions) => {
+        if (action.type === "UPDATE_STYLE" || action.type === "UPDATE_PROPS") {
+          const state = editorStore.getState();
+          const ids = selectedIds.filter((id) => state.doc.nodes[id]);
+          const label = opts?.historyLabel ?? "Style";
+          state.beginTransaction(`${label} (${ids.length} nodes)`);
+          for (const nodeId of ids) {
+            state.dispatch({ ...action, nodeId });
+          }
+          state.commitTransaction();
+        } else {
+          dispatch(action, opts);
+        }
+      }
+    : dispatch;
+
   return (
     <InspectorPanel
       key={selectedId}
       doc={doc}
       issues={issues}
       selectedId={selectedId!}
+      selectedIds={selectedIds}
+      isMultiSelect={isMultiSelect}
+      allSameType={allSameType}
       mode={mode}
       breakpoint={breakpoint}
-      dispatch={dispatch}
+      dispatch={bulkDispatch}
       onSaveToLibrary={props.onSaveToLibrary}
     />
   );
@@ -154,6 +179,9 @@ function InspectorPanel(props: {
   doc: Document;
   issues: ValidationIssue[];
   selectedId: NodeId;
+  selectedIds: NodeId[];
+  isMultiSelect: boolean;
+  allSameType: boolean;
   mode: Mode;
   breakpoint: Breakpoint;
   dispatch: (action: EditorAction, opts?: DispatchOptions) => void;
@@ -218,9 +246,11 @@ function InspectorPanel(props: {
     );
   };
 
-  const showLayout = LAYOUT_TYPES.includes(node.type);
+  // For mixed-type multi-selection, hide type-specific sections and show only shared style fields.
+  const showContent = !props.isMultiSelect || props.allSameType;
+  const showLayout = LAYOUT_TYPES.includes(node.type) && (!props.isMultiSelect || props.allSameType);
   const showSpacing = SPACING_TYPES.includes(node.type);
-  const showTypography = TYPOGRAPHY_TYPES.includes(node.type);
+  const showTypography = TYPOGRAPHY_TYPES.includes(node.type) && (!props.isMultiSelect || props.allSameType);
   const showAppearance = APPEARANCE_TYPES.includes(node.type);
 
   const hasLayoutOverride = hasAnyStyleValue(nodeStyle, LAYOUT_STYLE_KEYS);
@@ -237,6 +267,14 @@ function InspectorPanel(props: {
 
   return (
     <div className={styles.inspector}>
+      {/* Multi-selection banner */}
+      {props.isMultiSelect ? (
+        <div className={styles.inlineNotice} role="note">
+          {props.selectedIds.length} nodes selected.{" "}
+          {props.allSameType ? "Editing shared properties." : "Showing shared style properties only."}
+        </div>
+      ) : null}
+
       {/* Type switcher header */}
       <TypeSwitcher
         type={node.type}
@@ -284,7 +322,7 @@ function InspectorPanel(props: {
       </div>
 
       {/* Content section */}
-      {def.inspector ? (
+      {showContent && def.inspector ? (
         <CollapsibleSection
           label="Content"
           sectionKey="content"

@@ -9,7 +9,8 @@ export type ShortcutAction =
   | "MOVE_UP"
   | "MOVE_DOWN"
   | "ESCAPE"
-  | "TOGGLE_MODE";
+  | "TOGGLE_MODE"
+  | "SELECT_ALL_SIBLINGS";
 
 export function isEditableTarget(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
@@ -65,6 +66,8 @@ export function getShortcutAction(e: KeyboardLike): ShortcutAction | null {
 
   if (e.altKey && key === "ArrowUp") return "MOVE_UP";
   if (e.altKey && key === "ArrowDown") return "MOVE_DOWN";
+
+  if (mod && lower === "a") return "SELECT_ALL_SIBLINGS";
 
   return null;
 }

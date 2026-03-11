@@ -40,10 +40,12 @@ type ActiveTransaction = {
   at: number;
 };
 
-export type ClipboardState = Subtree | null;
+export type ClipboardState = Subtree[] | null;
 
 export type UiCommand =
   | { type: "SET_SELECTED"; nodeId: NodeId | null }
+  | { type: "SHIFT_SELECT"; nodeId: NodeId }
+  | { type: "SELECT_SIBLINGS" }
   | { type: "SET_HOVERED"; nodeId: NodeId | null }
   | { type: "SET_MODE"; mode: Mode }
   | { type: "SET_BREAKPOINT"; breakpoint: Breakpoint };
@@ -62,7 +64,10 @@ export type EditorState = {
 
   mode: Mode;
   breakpoint: Breakpoint;
+  /** Primary selected node (anchor). For single-select workflows this is the sole selection. */
   selectedId: NodeId | null;
+  /** All currently selected node IDs (always includes selectedId when non-null). */
+  selectedIds: NodeId[];
   hoveredId: NodeId | null;
 
   idFactory: IdFactory;
@@ -86,6 +91,9 @@ export type EditorState = {
   copySelected: () => { ok: true } | { ok: false; error: string };
   cutSelected: () => { ok: true } | { ok: false; error: string };
   paste: () => { ok: true; insertedRootId: NodeId } | { ok: false; error: string };
+
+  deleteSelected: () => { ok: true } | { ok: false; error: string };
+  duplicateSelected: () => { ok: true } | { ok: false; error: string };
 };
 
 export type CreateEditorStoreOptions = {
@@ -106,6 +114,8 @@ type ApplyCtxLike = {
 function isUiCommand(action: EditorAction): action is UiCommand {
   return (
     action.type === "SET_SELECTED" ||
+    action.type === "SHIFT_SELECT" ||
+    action.type === "SELECT_SIBLINGS" ||
     action.type === "SET_HOVERED" ||
     action.type === "SET_MODE" ||
     action.type === "SET_BREAKPOINT"
@@ -168,11 +178,28 @@ function isCoalesceCompatible(prev: HistoryEntry | undefined, key: string, now: 
   return now - prev.at <= windowMs;
 }
 
+/** Returns the depth of a node (root = 0). */
+function nodeDepth(doc: Document, nodeId: NodeId): number {
+  let depth = 0;
+  let current: NodeId | undefined = nodeId;
+  while (current && doc.nodes[current]?.parentId) {
+    current = doc.nodes[current]!.parentId ?? undefined;
+    depth++;
+  }
+  return depth;
+}
+
+/** Sort node IDs so deeper nodes come first (for safe multi-delete). */
+function sortByReverseTreeOrder(doc: Document, nodeIds: NodeId[]): NodeId[] {
+  return [...nodeIds].sort((a, b) => nodeDepth(doc, b) - nodeDepth(doc, a));
+}
+
 export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
   const initialDoc = opts.doc ?? createDefaultDocument();
   const initialIssues = validateDocument(initialDoc);
 
   const idFactory = opts.idFactory ?? createNanoidFactory();
+  const initialSelectedId = opts.selectedId ?? initialDoc.rootId;
 
   return createStore<EditorState>()(
     subscribeWithSelector((set, get) => ({
@@ -181,7 +208,8 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
 
       mode: opts.mode ?? "edit",
       breakpoint: opts.breakpoint ?? "lg",
-      selectedId: opts.selectedId ?? initialDoc.rootId,
+      selectedId: initialSelectedId,
+      selectedIds: initialSelectedId ? [initialSelectedId] : [],
       hoveredId: null,
 
       idFactory,
@@ -195,9 +223,50 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
       dispatch: (action, dispatchOpts) => {
         if (isUiCommand(action)) {
           switch (action.type) {
-            case "SET_SELECTED":
-              set({ selectedId: ensureValidSelection(get().doc, action.nodeId) });
+            case "SET_SELECTED": {
+              const resolved = ensureValidSelection(get().doc, action.nodeId);
+              set({ selectedId: resolved, selectedIds: resolved ? [resolved] : [] });
               return;
+            }
+            case "SHIFT_SELECT": {
+              const state = get();
+              const { nodeId } = action;
+              if (!state.doc.nodes[nodeId]) return;
+
+              const current = new Set(state.selectedIds);
+              if (current.has(nodeId)) {
+                // Remove from selection
+                current.delete(nodeId);
+                const remaining = [...current];
+                if (remaining.length === 0) {
+                  // Nothing left — select root
+                  const root = state.doc.rootId;
+                  set({ selectedId: root, selectedIds: [root] });
+                } else {
+                  // If removed node was primary, promote first remaining
+                  const newPrimary = state.selectedId === nodeId ? remaining[0] : state.selectedId;
+                  set({ selectedId: newPrimary ?? remaining[0], selectedIds: remaining });
+                }
+              } else {
+                // Add to selection; make it primary
+                current.add(nodeId);
+                set({ selectedId: nodeId, selectedIds: [...current] });
+              }
+              return;
+            }
+            case "SELECT_SIBLINGS": {
+              const state = get();
+              const primaryId = state.selectedId;
+              if (!primaryId) return;
+              const node = state.doc.nodes[primaryId];
+              if (!node || !node.parentId) return;
+              const parent = state.doc.nodes[node.parentId];
+              if (!parent) return;
+              const siblings = parent.children;
+              if (siblings.length === 0) return;
+              set({ selectedId: primaryId, selectedIds: [...siblings] });
+              return;
+            }
             case "SET_HOVERED":
               set({ hoveredId: action.nodeId });
               return;
@@ -268,25 +337,51 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
           switch (action.type) {
             case "ADD_NODE":
             case "DUPLICATE_NODE":
-            case "INSERT_SUBTREE":
-              partial.selectedId = ensureValidSelection(nextDoc, ctx.createdNodeId ?? null);
+            case "INSERT_SUBTREE": {
+              const newId = ensureValidSelection(nextDoc, ctx.createdNodeId ?? null);
+              partial.selectedId = newId;
+              partial.selectedIds = newId ? [newId] : [];
               break;
-            case "MOVE_NODE":
-              partial.selectedId = ensureValidSelection(nextDoc, action.nodeId);
+            }
+            case "MOVE_NODE": {
+              const movedId = ensureValidSelection(nextDoc, action.nodeId);
+              partial.selectedId = movedId;
+              partial.selectedIds = movedId ? [movedId] : [];
               break;
-            case "DELETE_NODE":
-              partial.selectedId = ensureValidSelection(nextDoc, preDeleteSelection);
+            }
+            case "DELETE_NODE": {
+              const nextId = ensureValidSelection(nextDoc, preDeleteSelection);
+              partial.selectedId = nextId;
+              // Remove deleted node from selectedIds, keeping others that still exist
+              partial.selectedIds = state.selectedIds
+                .filter((id) => id !== action.nodeId && nextDoc.nodes[id])
+                .concat(nextId && !state.selectedIds.includes(nextId) && state.selectedIds.includes(action.nodeId) ? [nextId] : []);
+              if ((partial.selectedIds as NodeId[]).length === 0 && nextId) {
+                partial.selectedIds = [nextId];
+              }
               break;
+            }
             case "UPDATE_META":
             case "UPDATE_PROPS":
             case "UPDATE_STYLE":
             case "SET_COLUMNS":
-            case "UPDATE_THEME":
-              partial.selectedId = ensureValidSelection(nextDoc, state.selectedId);
+            case "UPDATE_THEME": {
+              const stayId = ensureValidSelection(nextDoc, state.selectedId);
+              partial.selectedId = stayId;
+              partial.selectedIds = state.selectedIds.filter((id) => nextDoc.nodes[id]);
+              if ((partial.selectedIds as NodeId[]).length === 0 && stayId) {
+                partial.selectedIds = [stayId];
+              }
               break;
+            }
           }
         } else {
-          partial.selectedId = ensureValidSelection(nextDoc, state.selectedId);
+          const stayId = ensureValidSelection(nextDoc, state.selectedId);
+          partial.selectedId = stayId;
+          partial.selectedIds = state.selectedIds.filter((id) => nextDoc.nodes[id]);
+          if ((partial.selectedIds as NodeId[]).length === 0 && stayId) {
+            partial.selectedIds = [stayId];
+          }
         }
 
         set(partial as EditorState);
@@ -300,13 +395,15 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
 
         const nextDoc = applyPatches(state.doc, entry.inversePatches);
         const nextIssues = validateDocument(nextDoc);
+        const stayId = ensureValidSelection(nextDoc, state.selectedId);
 
         set({
           doc: nextDoc,
           issues: nextIssues,
           undoStack: state.undoStack.slice(0, -1),
           redoStack: [...state.redoStack, entry],
-          selectedId: ensureValidSelection(nextDoc, state.selectedId),
+          selectedId: stayId,
+          selectedIds: stayId ? [stayId] : [],
         });
       },
 
@@ -318,13 +415,15 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
 
         const nextDoc = applyPatches(state.doc, entry.patches);
         const nextIssues = validateDocument(nextDoc);
+        const stayId = ensureValidSelection(nextDoc, state.selectedId);
 
         set({
           doc: nextDoc,
           issues: nextIssues,
           redoStack: state.redoStack.slice(0, -1),
           undoStack: [...state.undoStack, entry],
-          selectedId: ensureValidSelection(nextDoc, state.selectedId),
+          selectedId: stayId,
+          selectedIds: stayId ? [stayId] : [],
         });
       },
 
@@ -334,6 +433,7 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
           doc: nextDoc,
           issues: nextIssues,
           selectedId: nextDoc.rootId,
+          selectedIds: [nextDoc.rootId],
           hoveredId: null,
           undoStack: [],
           redoStack: [],
@@ -383,53 +483,148 @@ export function createEditorStore(opts: CreateEditorStoreOptions = {}) {
 
       copySelected: () => {
         const state = get();
-        const selectedId = state.selectedId;
-        if (!selectedId) return { ok: false, error: "Nothing selected." };
-        if (selectedId === state.doc.rootId) return { ok: false, error: "Cannot copy the root Page node." };
-        if (!state.doc.nodes[selectedId]) return { ok: false, error: "Selected node does not exist." };
+        const ids = state.selectedIds.filter(
+          (id) => id !== state.doc.rootId && state.doc.nodes[id],
+        );
+        if (ids.length === 0) {
+          if (state.selectedId === state.doc.rootId) return { ok: false, error: "Cannot copy the root Page node." };
+          return { ok: false, error: "Nothing selected." };
+        }
 
-        const subtree = cloneSubtree(state.doc, selectedId);
-        set({ clipboard: subtree });
+        const subtrees = ids.map((id) => cloneSubtree(state.doc, id));
+        set({ clipboard: subtrees });
         return { ok: true };
       },
 
       cutSelected: () => {
         const state = get();
-        const selectedId = state.selectedId;
-        if (!selectedId) return { ok: false, error: "Nothing selected." };
-        if (selectedId === state.doc.rootId) return { ok: false, error: "Cannot cut the root Page node." };
+        const ids = state.selectedIds.filter(
+          (id) => id !== state.doc.rootId && state.doc.nodes[id],
+        );
+        if (ids.length === 0) {
+          if (state.selectedId === state.doc.rootId) return { ok: false, error: "Cannot cut the root Page node." };
+          return { ok: false, error: "Nothing selected." };
+        }
 
         const copyRes = get().copySelected();
         if (!copyRes.ok) return copyRes;
 
         get().beginTransaction("Cut");
-        get().dispatch({ type: "DELETE_NODE", nodeId: selectedId });
+        const sorted = sortByReverseTreeOrder(get().doc, ids);
+        for (const nodeId of sorted) {
+          if (get().doc.nodes[nodeId]) {
+            get().dispatch({ type: "DELETE_NODE", nodeId });
+          }
+        }
         get().commitTransaction();
+
+        // Don't override selectedId — DELETE_NODE already computed the right next selection.
+        const currentId = get().selectedId ?? get().doc.rootId;
+        set({ selectedIds: [currentId] });
         return { ok: true };
       },
 
       paste: () => {
         const state = get();
         const clipboard = state.clipboard;
-        if (!clipboard) return { ok: false, error: "Clipboard is empty." };
+        if (!clipboard || clipboard.length === 0) return { ok: false, error: "Clipboard is empty." };
 
-        const clipboardRoot = clipboard.nodes[clipboard.rootId];
-        if (!clipboardRoot) return { ok: false, error: "Clipboard subtree is invalid." };
+        const firstClipboardRoot = clipboard[0].nodes[clipboard[0].rootId];
+        if (!firstClipboardRoot) return { ok: false, error: "Clipboard subtree is invalid." };
 
-        const remapped = remapIds(clipboard, state.idFactory);
-        const target = findDefaultPasteTarget(state.doc, state.selectedId, clipboardRoot.type);
+        const target = findDefaultPasteTarget(state.doc, state.selectedId, firstClipboardRoot.type);
         if (!target) return { ok: false, error: "No valid paste target for the selected node." };
 
         get().beginTransaction("Paste");
-        get().dispatch({ type: "INSERT_SUBTREE", parentId: target.parentId, index: target.index, subtree: remapped });
+        let lastInsertedId: NodeId | null = null;
+        let insertIndex = target.index;
+        for (const subtree of clipboard) {
+          const remapped = remapIds(subtree, state.idFactory);
+          get().dispatch({ type: "INSERT_SUBTREE", parentId: target.parentId, index: insertIndex, subtree: remapped });
+          if (get().doc.nodes[remapped.rootId]) {
+            lastInsertedId = remapped.rootId;
+            insertIndex++;
+          }
+        }
         get().commitTransaction();
 
-        const insertedRootId = remapped.rootId;
+        const insertedRootId = lastInsertedId ?? clipboard[0].rootId;
         if (!get().doc.nodes[insertedRootId]) {
           return { ok: false, error: "Paste failed due to structural constraints." };
         }
 
+        set({ selectedId: insertedRootId, selectedIds: [insertedRootId] });
         return { ok: true, insertedRootId };
+      },
+
+      deleteSelected: () => {
+        const state = get();
+        const ids = state.selectedIds.filter(
+          (id) => id !== state.doc.rootId && state.doc.nodes[id],
+        );
+        if (ids.length === 0) {
+          if (state.selectedId === state.doc.rootId) return { ok: false, error: "Cannot delete the root Page node." };
+          return { ok: false, error: "Nothing selected." };
+        }
+
+        if (ids.length === 1) {
+          get().dispatch({ type: "DELETE_NODE", nodeId: ids[0] }, { historyLabel: "Delete" });
+          const root = get().doc.rootId;
+          // selectedId was already updated by dispatch; just clear selectedIds to single
+          const current = get().selectedId ?? root;
+          set({ selectedIds: [current] });
+          return { ok: true };
+        }
+
+        const sorted = sortByReverseTreeOrder(get().doc, ids);
+        get().beginTransaction(`Delete ${ids.length} nodes`);
+        for (const nodeId of sorted) {
+          if (get().doc.nodes[nodeId]) {
+            get().dispatch({ type: "DELETE_NODE", nodeId });
+          }
+        }
+        get().commitTransaction();
+
+        const currentId = get().selectedId ?? get().doc.rootId;
+        set({ selectedIds: [currentId] });
+        return { ok: true };
+      },
+
+      duplicateSelected: () => {
+        const state = get();
+        const ids = state.selectedIds.filter(
+          (id) => id !== state.doc.rootId && state.doc.nodes[id],
+        );
+        if (ids.length === 0) {
+          if (state.selectedId === state.doc.rootId) return { ok: false, error: "Cannot duplicate the root Page node." };
+          return { ok: false, error: "Nothing selected." };
+        }
+
+        if (ids.length === 1) {
+          get().dispatch({ type: "DUPLICATE_NODE", nodeId: ids[0] }, { historyLabel: "Duplicate" });
+          const newId = get().selectedId;
+          set({ selectedIds: newId ? [newId] : [] });
+          return { ok: true };
+        }
+
+        const createdIds: NodeId[] = [];
+        const ctx: ApplyCtxLike = { idFactory: state.idFactory, issues: [] };
+
+        get().beginTransaction(`Duplicate ${ids.length} nodes`);
+        for (const nodeId of ids) {
+          if (get().doc.nodes[nodeId]) {
+            get().dispatch({ type: "DUPLICATE_NODE", nodeId });
+            const newId = get().selectedId;
+            if (newId && !ids.includes(newId)) createdIds.push(newId);
+          }
+        }
+        get().commitTransaction();
+
+        if (createdIds.length > 0) {
+          const lastId = createdIds[createdIds.length - 1];
+          set({ selectedId: lastId, selectedIds: createdIds });
+        }
+        return { ok: true };
       },
     })),
   );

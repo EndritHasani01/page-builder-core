@@ -14,6 +14,11 @@
   outline-offset: 2px;
 }
 
+.nodeMultiSelected {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: 2px;
+}
+
 .nodeHovered {
   outline: 1px dashed color-mix(in srgb, var(--color-primary) 60%, var(--color-border));
   outline-offset: 2px;

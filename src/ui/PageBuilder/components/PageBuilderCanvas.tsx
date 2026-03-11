@@ -48,6 +48,7 @@ export function PageBuilderCanvas(props: {
   const mode = useEditorStore((s) => s.mode);
   const breakpoint = useEditorStore((s) => s.breakpoint);
   const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const hoveredId = useEditorStore((s) => s.hoveredId);
   const activeTxn = useEditorStore((s) => s.activeTxn);
   const dispatch = useEditorStore((s) => s.dispatch);
@@ -70,8 +71,12 @@ export function PageBuilderCanvas(props: {
   } = useBlockContextMenu({ pushToast, onAddSection, onBrowseTemplates, onSaveToLibrary });
 
   const onSelect = useCallback(
-    (nodeId: NodeId) => {
-      dispatch({ type: "SET_SELECTED", nodeId });
+    (nodeId: NodeId, shift?: boolean) => {
+      if (shift) {
+        dispatch({ type: "SHIFT_SELECT", nodeId });
+      } else {
+        dispatch({ type: "SET_SELECTED", nodeId });
+      }
     },
     [dispatch],
   );
@@ -144,7 +149,9 @@ export function PageBuilderCanvas(props: {
       >
         <div className={styles.canvasTitle}>Canvas ({mode})</div>
         <div id={selectionDescId} className={styles.selectionBreadcrumb} aria-live="polite">
-          {selectionBreadcrumb}
+          {selectedIds.length > 1
+            ? `${selectedIds.length} selected`
+            : selectionBreadcrumb}
         </div>
         {dropInvalid ? (
           <div className={styles.dropInvalidMessage} role="status" aria-label="Invalid drop target">
@@ -166,6 +173,7 @@ export function PageBuilderCanvas(props: {
               breakpoint={breakpoint}
               disableNavigation={isPreview}
               selectedId={renderMode === "editor" ? selectedId : null}
+              selectedIds={renderMode === "editor" ? selectedIds : null}
               hoveredId={renderMode === "editor" ? hoveredId : null}
               enableDnd={renderMode === "editor" ? dndEnabled : false}
               draggingId={activeDrag?.kind === "node" ? activeDrag.nodeId : null}

@@ -31,8 +31,10 @@ export type RenderDocumentProps = {
   breakpoint: Breakpoint;
   disableNavigation?: boolean;
   selectedId?: NodeId | null;
+  /** All currently selected node IDs (for multi-selection rendering). */
+  selectedIds?: NodeId[] | null;
   hoveredId?: NodeId | null;
-  onSelect?: (nodeId: NodeId) => void;
+  onSelect?: (nodeId: NodeId, shift?: boolean) => void;
   onHover?: (nodeId: NodeId | null) => void;
 
   enableDnd?: boolean;
@@ -98,6 +100,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
   if (hidden && props.mode !== "editor") return null;
 
   const selected = props.mode === "editor" && props.selectedId === node.id;
+  const multiSelected = props.mode === "editor" && !selected && (props.selectedIds?.includes(node.id) ?? false);
   const hovered = props.mode === "editor" && props.hoveredId === node.id;
 
   const dataAttrs: Record<string, string> =
@@ -113,6 +116,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
       ? [
           styles.node,
           selected ? styles.nodeSelected : null,
+          multiSelected ? styles.nodeMultiSelected : null,
           hovered ? styles.nodeHovered : null,
           hidden ? styles.nodeHidden : null,
         ]
@@ -122,7 +126,7 @@ const NodeRenderer = memo(function NodeRenderer(props: NodeRendererProps) {
 
   const onSelectNode = props.mode === "editor" && props.onSelect ? (e: MouseEvent) => {
     e.stopPropagation();
-    props.onSelect?.(node.id);
+    props.onSelect?.(node.id, e.shiftKey);
   } : undefined;
 
   const onFocusNode =
@@ -253,6 +257,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
 
   const hidden = Boolean(node.constraints?.hidden);
   const selected = props.selectedId === node.id;
+  const multiSelected = !selected && (props.selectedIds?.includes(node.id) ?? false);
   const hovered = props.hoveredId === node.id;
 
   const isDropTarget = props.dropTargetId === node.id;
@@ -269,6 +274,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
     [
       styles.node,
       selected ? styles.nodeSelected : null,
+      multiSelected ? styles.nodeMultiSelected : null,
       hovered ? styles.nodeHovered : null,
       hidden ? styles.nodeHidden : null,
       isDragging ? styles.nodeDragging : null,
@@ -280,7 +286,7 @@ const NodeRendererWithDnd = memo(function NodeRendererWithDnd(props: NodeRendere
 
   const onSelectNode = props.onSelect ? (e: MouseEvent) => {
     e.stopPropagation();
-    props.onSelect?.(node.id);
+    props.onSelect?.(node.id, e.shiftKey);
   } : undefined;
 
   const onFocusNode = props.onSelect
