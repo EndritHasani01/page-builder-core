@@ -1,11 +1,6 @@
 import type { IdFactory, Document, Node } from "@/editor-core";
 import { LATEST_SCHEMA_VERSION, createDefaultTheme, createNode } from "@/editor-core";
-
-function collect(...ns: Node[]): Record<string, Node> {
-  const out: Record<string, Node> = {};
-  for (const n of ns) out[n.id] = n;
-  return out;
-}
+import { collect } from "./templateUtils";
 
 export function createPricingTemplate(idFactory: IdFactory): Document {
   const now = new Date().toISOString();
@@ -14,7 +9,7 @@ export function createPricingTemplate(idFactory: IdFactory): Document {
 
   // --- Heading section ---
   const headingSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "default", fullWidth: false } });
-  const headingCols = createNode("columns", { idFactory, parentId: headingSection.id, props: { columns: 2, gap: "var(--space-4)" } });
+  const headingCols = createNode("columns", { idFactory, parentId: headingSection.id, props: { columns: 1, gap: "var(--space-4)" } });
 
   const headingColMain = createNode("column", { idFactory, parentId: headingCols.id });
   const mainHeading = createNode("text", {
@@ -31,8 +26,7 @@ export function createPricingTemplate(idFactory: IdFactory): Document {
   });
   headingColMain.children = [mainHeading.id, mainSubtitle.id];
 
-  const headingColSpacer = createNode("column", { idFactory, parentId: headingCols.id });
-  headingCols.children = [headingColMain.id, headingColSpacer.id];
+  headingCols.children = [headingColMain.id];
   headingSection.children = [headingCols.id];
 
   // --- Pricing cards section ---
@@ -107,7 +101,7 @@ export function createPricingTemplate(idFactory: IdFactory): Document {
     rootId: page.id,
     nodes: collect(
       page,
-      headingSection, headingCols, headingColMain, mainHeading, mainSubtitle, headingColSpacer,
+      headingSection, headingCols, headingColMain, mainHeading, mainSubtitle,
       pricingSection, pricingCols,
       ...starterNodes, ...proNodes, ...enterpriseNodes,
     ),

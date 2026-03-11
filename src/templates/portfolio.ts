@@ -1,11 +1,6 @@
-import type { IdFactory, Document, Node } from "@/editor-core";
+import type { IdFactory, Document } from "@/editor-core";
 import { LATEST_SCHEMA_VERSION, createDefaultTheme, createNode } from "@/editor-core";
-
-function collect(...ns: Node[]): Record<string, Node> {
-  const out: Record<string, Node> = {};
-  for (const n of ns) out[n.id] = n;
-  return out;
-}
+import { collect } from "./templateUtils";
 
 export function createPortfolioTemplate(idFactory: IdFactory): Document {
   const now = new Date().toISOString();
@@ -119,7 +114,7 @@ export function createPortfolioTemplate(idFactory: IdFactory): Document {
 
   // --- About section ---
   const aboutSection = createNode("section", { idFactory, parentId: page.id, props: { variant: "default", fullWidth: false } });
-  const aboutCols = createNode("columns", { idFactory, parentId: aboutSection.id, props: { columns: 2, gap: "var(--space-8)" } });
+  const aboutCols = createNode("columns", { idFactory, parentId: aboutSection.id, props: { columns: 1, gap: "var(--space-8)" } });
 
   const aboutColText = createNode("column", { idFactory, parentId: aboutCols.id });
   const aboutHeading = createNode("text", {
@@ -141,8 +136,7 @@ export function createPortfolioTemplate(idFactory: IdFactory): Document {
   });
   aboutColText.children = [aboutHeading.id, aboutBody1.id, aboutBody2.id];
 
-  const aboutColSpacer = createNode("column", { idFactory, parentId: aboutCols.id });
-  aboutCols.children = [aboutColText.id, aboutColSpacer.id];
+  aboutCols.children = [aboutColText.id];
   aboutSection.children = [aboutCols.id];
 
   page.children = [heroSection.id, proj1Section.id, proj2Section.id, aboutSection.id];
@@ -156,7 +150,7 @@ export function createPortfolioTemplate(idFactory: IdFactory): Document {
       heroSection, heroCols, heroColText, heroHeading, heroSubtext, heroCtaBtn, heroColImage, heroImage,
       proj1Section, proj1Cols, proj1ColImage, proj1Image, proj1ColText, proj1Title, proj1Body, proj1Btn,
       proj2Section, proj2Cols, proj2ColText, proj2Title, proj2Body, proj2Btn, proj2ColImage, proj2Image,
-      aboutSection, aboutCols, aboutColText, aboutHeading, aboutBody1, aboutBody2, aboutColSpacer,
+      aboutSection, aboutCols, aboutColText, aboutHeading, aboutBody1, aboutBody2,
     ),
   };
 }

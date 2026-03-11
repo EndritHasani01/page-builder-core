@@ -92,7 +92,7 @@ export const blockRegistry: BlockRegistry = {
         {
           label: "Layout",
           fields: [
-            { kind: "number", path: "props.columns", label: "Columns", min: 2, max: 6, step: 1, required: true },
+            { kind: "number", path: "props.columns", label: "Columns", min: 1, max: 6, step: 1, required: true },
             { kind: "length", path: "props.gap", label: "Gap", tokens: ["var(--space-2)", "var(--space-4)"] },
           ],
         },
@@ -107,11 +107,11 @@ export const blockRegistry: BlockRegistry = {
           message: "Columns count must be an integer.",
           fieldPath: "props.columns",
         });
-      } else if (node.props.columns < 2 || node.props.columns > 6) {
+      } else if (node.props.columns < 1 || node.props.columns > 6) {
         issues.push({
           nodeId: node.id,
           level: "error",
-          message: "Columns count must be between 2 and 6.",
+          message: "Columns count must be between 1 and 6.",
           fieldPath: "props.columns",
         });
       }

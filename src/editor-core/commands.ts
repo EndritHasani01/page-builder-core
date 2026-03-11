@@ -161,8 +161,8 @@ function setColumnsCount(doc: DraftDoc, ctx: ApplyCtx, columnsId: NodeId, column
     return;
   }
 
-  const desiredRaw = Number.isFinite(columnsCount) ? Math.trunc(columnsCount) : 2;
-  const clamped = Math.max(2, Math.min(6, desiredRaw));
+  const desiredRaw = Number.isFinite(columnsCount) ? Math.trunc(columnsCount) : 1;
+  const clamped = Math.max(1, Math.min(6, desiredRaw));
 
   const columnIds = node.children.filter((id) => doc.nodes[id]?.type === "column");
   const strayIds = node.children.filter((id) => doc.nodes[id] && doc.nodes[id]?.type !== "column");

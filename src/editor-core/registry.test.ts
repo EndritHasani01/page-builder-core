@@ -15,7 +15,7 @@ describe("blockRegistry", () => {
       kind: "number",
       path: "props.columns",
       label: "Columns",
-      min: 2,
+      min: 1,
       max: 6,
       step: 1,
       required: true,
